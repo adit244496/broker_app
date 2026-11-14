@@ -1,0 +1,28 @@
+// Every backend (backend/) admin API the portal talks to, one entry per API.
+// All except login require an admin bearer token; the backend rejects broker tokens here.
+
+export const endpoints = {
+  login: () => `/admin/auth/login`,
+  logout: () => `/admin/auth/logout`,
+  changePassword: () => `/admin/auth/password`,
+  overview: () => `/admin/overview`,
+  listBrokers: () => `/admin/brokers`,
+  getBroker: (id: string) => `/admin/brokers/${encodeURIComponent(id)}`,
+  approveBroker: (id: string) => `/admin/brokers/${encodeURIComponent(id)}/approve`,
+  rejectBroker: (id: string) => `/admin/brokers/${encodeURIComponent(id)}/reject`,
+  syncBroker: (id: string) => `/admin/brokers/${encodeURIComponent(id)}/sync`,
+  listEnquiries: () => `/admin/enquiries`,
+  listProjects: () => `/admin/projects`,
+  projectAccess: (id: string) => `/admin/projects/${encodeURIComponent(id)}/access`,
+  projectImage: (id: string, kind: 'icon' | 'cover') => `/admin/projects/${encodeURIComponent(id)}/media/${kind}`,
+  projectVideos: (id: string) => `/admin/projects/${encodeURIComponent(id)}/videos`,
+  emailSettings: () => `/admin/settings/email`,
+  testEmail: () => `/admin/settings/email/test`,
+  hods: () => `/admin/settings/hods`,
+  accountForm: () => `/admin/settings/account-form`,
+  resetAccountForm: () => `/admin/settings/account-form/reset`,
+  leadForm: () => `/admin/settings/lead-form`,
+  resetLeadForm: () => `/admin/settings/lead-form/reset`,
+  hod: (id: number) => `/admin/settings/hods/${id}`,
+  hodPassword: (id: number) => `/admin/settings/hods/${id}/password`,
+} as const;

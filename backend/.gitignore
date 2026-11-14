@@ -1,0 +1,30 @@
+# virtualenv
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# env files (keep the example)
+.env
+.env.*
+!.env.example
+
+# admin-uploaded project images
+media/
+
+# local databases and logs
+*.db
+*.sqlite3
+*.log
+
+# editor / OS
+.vscode/*
+.idea/
+.DS_Store
+Thumbs.db

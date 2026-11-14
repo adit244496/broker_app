@@ -1,0 +1,118 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { dashboardApi } from '@/api/services';
+import { useAuth } from '@/auth/AuthContext';
+import { BrandLogo, Button, Card, ErrorState, Loading, SectionTitle, StatusBadge } from '@/components/ui';
+import { useAsync } from '@/hooks/useAsync';
+import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
+import { colors, spacing, statusColors, TAB_BAR_HEIGHT } from '@/theme';
+import { CLOSED_STATUSES } from '@/types/models';
+import { formatDate } from '@/utils/format';
+
+export function DashboardTab() {
+  const router = useRouter();
+  const summary = useAsync(() => dashboardApi.getSummary());
+  const { user } = useAuth();
+
+  useRefreshOnFocus(summary.silentReload);
+
+  if (summary.loading && !summary.data) return <Loading />;
+  if (summary.error && !summary.data) return <ErrorState message={summary.error} onRetry={summary.reload} />;
+  const d = summary.data!;
+  const maxCount = Math.max(1, ...d.pipeline.map((p) => p.count));
+
+  // Qualified (Salesforce's converted status) and closed leads aren't open.
+  const closedOnly = d.pipeline.filter((p) => CLOSED_STATUSES.includes(p.status)).reduce((n, p) => n + p.count, 0);
+  const closed = closedOnly + d.bookings;
+
+  const stats = [
+    { label: 'Leads', value: d.totalEnquiries, icon: 'chatbubbles' as const, tint: colors.primarySoft, fg: colors.primary },
+    { label: 'Open', value: d.totalEnquiries - closed, icon: 'time' as const, tint: '#E6F0F8', fg: '#2F6C9C' },
+    { label: 'Visits Confirmed', value: d.visitsConfirmed, icon: 'calendar' as const, tint: colors.accentSoft, fg: colors.accentText },
+    { label: 'Visits Done', value: d.visitsDone, icon: 'location' as const, tint: '#CFFAFE', fg: '#0E7490' },
+    { label: 'Qualified', value: d.bookings, icon: 'checkmark-done' as const, tint: '#DCFCE7', fg: '#15803D' },
+    { label: 'Booked', value: d.booked, icon: 'trophy' as const, tint: '#FEF0DD', fg: '#A35500' },
+    { label: 'Closed', value: closedOnly, icon: 'close-circle' as const, tint: '#FEE2E2', fg: '#B91C1C' },
+  ];
+
+  return (
+    <ScrollView
+      contentContainerStyle={{ padding: spacing.lg, paddingBottom: TAB_BAR_HEIGHT + 48 }}
+      refreshControl={<RefreshControl refreshing={summary.refreshing} onRefresh={summary.refresh} />}
+    >
+      <BrandLogo style={{ marginBottom: spacing.lg }} />
+      <Text style={styles.hello}>Hello{user ? `, ${user.name}` : ''} 👋</Text>
+      <Text style={styles.sub}>Here’s how your leads are progressing</Text>
+
+      <View style={styles.grid}>
+        {stats.map((st) => (
+          <Card key={st.label} style={styles.stat}>
+            <View style={[styles.statIcon, { backgroundColor: st.tint }]}>
+              <Ionicons name={st.icon} size={18} color={st.fg} />
+            </View>
+            <Text style={styles.statValue}>{st.value}</Text>
+            <Text style={styles.statLabel}>{st.label}</Text>
+          </Card>
+        ))}
+      </View>
+
+      <View style={styles.actions}>
+        <Button title="Create New Lead" icon="add-circle" style={{ flex: 1 }} onPress={() => router.push('/enquiries/new')} />
+      </View>
+
+      <SectionTitle>Lead pipeline</SectionTitle>
+      <Card>
+        {d.pipeline.map((p) => (
+          <View key={p.status} style={styles.pipeRow}>
+            <Text style={styles.pipeLabel}>{p.status}</Text>
+            <View style={styles.pipeTrack}>
+              <View
+                style={[styles.pipeFill, { width: `${(p.count / maxCount) * 100}%`, backgroundColor: (statusColors[p.status] ?? statusColors.New).fg }]}
+              />
+            </View>
+            <Text style={styles.pipeCount}>{p.count}</Text>
+          </View>
+        ))}
+      </Card>
+
+      <SectionTitle>Recent leads</SectionTitle>
+      <View style={{ gap: spacing.md }}>
+        {d.recentEnquiries.map((e) => (
+          <Card key={e.id} onPress={() => router.push({ pathname: '/enquiries/[id]', params: { id: e.id } })}>
+            <View style={styles.recentRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.recentName}>
+                  {e.firstName} {e.lastName}
+                </Text>
+                <Text style={styles.recentMeta}>
+                  {e.projectName} · {formatDate(e.createdDate)}
+                </Text>
+              </View>
+              <StatusBadge status={e.status} />
+            </View>
+          </Card>
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  hello: { fontSize: 26, fontWeight: '800', color: colors.text },
+  sub: { fontSize: 14, color: colors.textMuted, marginTop: 2, marginBottom: spacing.lg },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  stat: { width: '47.5%', padding: spacing.md },
+  statIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  statValue: { fontSize: 26, fontWeight: '800', color: colors.text, marginTop: spacing.sm },
+  statLabel: { fontSize: 13, color: colors.textMuted },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },
+  pipeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
+  pipeLabel: { width: 130, fontSize: 12.5, color: colors.text },
+  pipeTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.bg, overflow: 'hidden' },
+  pipeFill: { height: 8, borderRadius: 4 },
+  pipeCount: { width: 28, textAlign: 'right', fontSize: 13, fontWeight: '700', color: colors.text },
+  recentRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  recentName: { fontSize: 15, fontWeight: '700', color: colors.text },
+  recentMeta: { fontSize: 12.5, color: colors.textMuted, marginTop: 2 },
+});
