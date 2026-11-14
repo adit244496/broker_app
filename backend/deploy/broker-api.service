@@ -16,9 +16,9 @@ Wants=network-online.target
 User=srvadmin
 Group=srvadmin
 WorkingDirectory=/home/srvadmin/broker_app/broker_app/backend
-# Only Nginx (same machine) talks to uvicorn; port 8000 stays closed to the internet.
+# Only Nginx (same machine) talks to uvicorn; port 8019 stays closed to the internet.
 # Rate limits in app/ratelimit.py are per worker process, so keep the worker count small.
-ExecStart=/home/srvadmin/broker_app/broker_app/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips 127.0.0.1
+ExecStart=/home/srvadmin/broker_app/broker_app/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8019 --workers 2 --proxy-headers --forwarded-allow-ips 127.0.0.1
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1

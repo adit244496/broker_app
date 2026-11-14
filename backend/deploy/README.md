@@ -14,7 +14,7 @@ For now everything runs on plain HTTP on the IP address:
 VM → **Networking** → Network Security Group, inbound rules:
 - **80** (HTTP) and **8080** (admin portal) from Any
 - **22** (SSH) from your office IP only
-- Do **not** open 8000 (uvicorn) or 5432 (PostgreSQL)
+- Do **not** open 8019 (uvicorn) or 5432 (PostgreSQL)
 
 Also make sure the VM's public IP is **Static** (Public IP resource → Configuration), so it doesn't change on restart.
 
@@ -69,7 +69,7 @@ sudo cp deploy/broker-api.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now broker-api
 systemctl status broker-api          # should say active (running)
-curl http://127.0.0.1:8000/health    # {"status":"ok"}
+curl http://127.0.0.1:8019/health    # {"status":"ok"}
 ```
 
 ## 5. Admin portal
