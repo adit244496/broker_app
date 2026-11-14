@@ -78,7 +78,10 @@ Errors are always `{ "message": "..." }`. Bearer tokens come from the login endp
 ## SMS login codes (Gupshup)
 
 Brokers log in with their mobile number by default; the code goes out through Gupshup's Enterprise SMS API
-(`app/sms.py`). Set in `.env`, all from the client's Gupshup account and DLT registration:
+(`app/sms.py`). An admin can enter the account in the portal (**Settings → SMS (Gupshup)**: user ID, password,
+sender ID, DLT entity and template IDs and the approved template text, with a test button); the password is stored
+encrypted with a key derived from `SECRET_KEY`, and saved portal details take priority. Otherwise set in `.env`,
+all from the client's Gupshup account and DLT registration:
 
 | Setting | What it is |
 |---------|------------|

@@ -8,6 +8,8 @@ import type {
   BrokerWithStats,
   EmailSettings,
   EmailSettingsInput,
+  SmsSettings,
+  SmsSettingsInput,
   Enquiry,
   EnquiryFilters,
   EnquiryStatus,
@@ -301,6 +303,13 @@ let accountForm: AccountForm = { fields: defaultAccountFields(), coreKeys: CORE_
 let hods: Hod[] = [];
 let nextHodId = 1;
 let emailSettings: EmailSettings = { source: 'none', configured: false, hasPassword: false };
+let smsSettings: SmsSettings = {
+  source: 'none',
+  configured: false,
+  hasPassword: false,
+  template:
+    '{code} is your OTP to log in to the Ambuja Neotia Partners app. It is valid for 5 minutes. Do not share it with anyone. - Ambuja Neotia',
+};
 
 export const mock = {
   async login(email: string, password: string): Promise<AdminSession> {
@@ -449,6 +458,40 @@ export const mock = {
       updatedBy: session?.user.name,
     };
     return { ...emailSettings };
+  },
+
+  async getSmsSettings(): Promise<SmsSettings> {
+    await delay(200);
+    requireAdmin();
+    return { ...smsSettings };
+  },
+
+  async saveSmsSettings(input: SmsSettingsInput): Promise<SmsSettings> {
+    await delay(500);
+    requireAdmin();
+    if (!input.password?.trim() && !smsSettings.hasPassword) throw new Error('Enter the Gupshup password.');
+    const template = input.template.trim().replace('{#var#}', '{code}');
+    if (template.split('{code}').length !== 2) throw new Error('template: Template must contain the code placeholder exactly once: {#var#} or {code}');
+    smsSettings = {
+      source: 'admin',
+      configured: true,
+      userid: input.userid.trim(),
+      senderId: input.senderId.trim().toUpperCase(),
+      entityId: input.entityId.trim(),
+      templateId: input.templateId.trim(),
+      template,
+      hasPassword: true,
+      updatedAt: new Date().toISOString(),
+      updatedBy: session?.user.name,
+    };
+    return { ...smsSettings };
+  },
+
+  async testSms(mobile: string) {
+    await delay(800);
+    requireAdmin();
+    if (!smsSettings.hasPassword) throw new Error('Save the Gupshup details and password first.');
+    return { sent: true, to: `+91 ******${mobile.replace(/\D/g, '').slice(-4)}` };
   },
 
   async getAccountForm(): Promise<AccountForm> {

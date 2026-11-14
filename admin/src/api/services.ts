@@ -6,6 +6,8 @@ import type {
   BrokerWithStats,
   EmailSettings,
   EmailSettingsInput,
+  SmsSettings,
+  SmsSettingsInput,
   Enquiry,
   EnquiryFilters,
   Hod,
@@ -108,6 +110,19 @@ export const settingsApi = {
   async saveEmail(input: EmailSettingsInput): Promise<EmailSettings> {
     if (env.useMock) return mock.saveEmailSettings(input);
     return request<EmailSettings>(endpoints.emailSettings(), { method: 'PUT', body: input });
+  },
+  async getSms(): Promise<SmsSettings> {
+    if (env.useMock) return mock.getSmsSettings();
+    return request<SmsSettings>(endpoints.smsSettings());
+  },
+  async saveSms(input: SmsSettingsInput): Promise<SmsSettings> {
+    if (env.useMock) return mock.saveSmsSettings(input);
+    return request<SmsSettings>(endpoints.smsSettings(), { method: 'PUT', body: input });
+  },
+  /** Sends the login template with a sample code to `mobile` through the saved Gupshup account. */
+  async testSms(mobile: string): Promise<{ sent: boolean; to: string }> {
+    if (env.useMock) return mock.testSms(mobile);
+    return request(endpoints.testSms(), { method: 'POST', body: { mobile } });
   },
   async getAccountForm(): Promise<AccountForm> {
     if (env.useMock) return mock.getAccountForm();

@@ -7,6 +7,7 @@ import type { EmailProvider, EmailSettings, Hod, SmtpSecurity } from '@/types';
 import { formatDate } from '@/utils/format';
 import { AccountFormCard } from './AccountFormCard';
 import { LeadFormCard } from './LeadFormCard';
+import { SmsSettingsCard } from './SmsSettingsCard';
 
 const PROVIDERS: { value: EmailProvider; label: string; help: string }[] = [
   {
@@ -29,7 +30,7 @@ export function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" subtitle="Email sending, who approves new brokers, and the account and lead forms" />
+      <PageHeader title="Settings" subtitle="Email and SMS sending, who approves new brokers, and the account and lead forms" />
       {settings.error && !settings.data ? (
         <ErrorState message={settings.error} onRetry={settings.reload} />
       ) : !settings.data ? (
@@ -37,6 +38,7 @@ export function SettingsPage() {
       ) : (
         <div className="stack">
           <EmailSettingsCard initial={settings.data} onSaved={(s) => setEmailReady(s.configured)} />
+          <SmsSettingsCard />
           <HodCard emailReady={emailReady ?? settings.data.configured} />
           <AccountFormCard />
           <LeadFormCard />

@@ -31,7 +31,7 @@ from app.ratelimit import ALL_LIMITERS  # noqa: E402
 from app.salesforce import get_salesforce  # noqa: E402
 from app.salesforce.mock import MockSalesforce  # noqa: E402
 from app.security import hash_password, webhook_signature  # noqa: E402
-from app.sms import get_sms  # noqa: E402
+from app.sms_settings import get_sms  # noqa: E402
 
 ADMIN_EMAIL = "admin@ambujaneotia.com"
 ADMIN_PASSWORD = "correct-horse-battery"

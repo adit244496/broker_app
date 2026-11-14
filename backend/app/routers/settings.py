@@ -1,13 +1,16 @@
-"""Admin settings: the SMTP account emails are sent from, and the HODs who approve registrations."""
+"""Admin settings: the SMTP and Gupshup accounts login codes are sent from, and the HODs who approve registrations."""
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import func, select, update
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
+from app.config import get_settings
 from app.deps import Admin, Db, Reviewer, Salesforce
 from app.email_settings import PRESETS, Provider, SavedSmtp, Security, active_config, load_saved, save
 from app.db import utcnow
-from app import account_form, lead_form
+from app import account_form, lead_form, sms_settings
+from app.partners import MOBILE_RE, normalize_mobile
+from app.sms import GupshupSms, SmsError
 from app.salesforce.base import SalesforceError
 from app.models import HOD, AdminUser, AppSetting, AuditLog, ReviewLink
 from app.notify import EmailError, SmtpEmail
@@ -123,6 +126,149 @@ def send_test_email(body: TestEmailIn, ctx: Admin, db: Db):
     db.add(AuditLog(admin_id=ctx.admin.id, action="smtp_test", detail=to))
     db.commit()
     return {"sent": True, "to": to}
+
+
+# ---------- SMS (Gupshup) ----------
+
+
+def _sms_view(db: Db) -> dict:
+    """Never includes the password."""
+    _, template, source = sms_settings.active(db)
+    saved = sms_settings.load_saved(db)
+    base = {"source": source, "configured": source != "none", "template": template}
+    if not saved:
+        s = get_settings()
+        # Shows the .env account (minus the password) so admins can see what's in use before overriding it.
+        env = {"userid": s.gupshup_userid, "senderId": s.gupshup_sender_id, "entityId": s.gupshup_entity_id, "templateId": s.gupshup_template_id}
+        return {**base, **(env if source == "env" else {}), "hasPassword": False}
+    g, row = saved
+    by = db.get(AdminUser, row.updated_by) if row.updated_by else None
+    return {
+        **base,
+        "userid": g.userid,
+        "senderId": g.sender_id,
+        "entityId": g.entity_id,
+        "templateId": g.template_id,
+        "template": g.template,
+        "hasPassword": True,
+        # The saved password can't be read, e.g. after SECRET_KEY changed: it must be entered again.
+        "passwordUnreadable": g.to_config() is None,
+        "updatedAt": row.updated_at.isoformat() if row.updated_at else None,
+        "updatedBy": by.name if by else None,
+    }
+
+
+def _digits(label: str, v: str, max_len: int = 30) -> str:
+    v = v.strip()
+    if not v.isdigit() or len(v) > max_len:
+        raise ValueError(f"{label} must be digits only")
+    return v
+
+
+class SmsSettingsIn(BaseModel):
+    userid: str = Field(min_length=1, max_length=30)
+    # Leave empty to keep the saved one.
+    password: str | None = Field(default=None, max_length=200)
+    senderId: str = Field(min_length=6, max_length=6)
+    entityId: str = Field(min_length=1, max_length=30)
+    templateId: str = Field(min_length=1, max_length=30)
+    template: str = Field(min_length=10, max_length=500)
+
+    @field_validator("userid")
+    @classmethod
+    def userid_digits(cls, v: str) -> str:
+        return _digits("Gupshup user ID", v)
+
+    @field_validator("entityId")
+    @classmethod
+    def entity_digits(cls, v: str) -> str:
+        return _digits("DLT entity ID", v)
+
+    @field_validator("templateId")
+    @classmethod
+    def template_id_digits(cls, v: str) -> str:
+        return _digits("DLT template ID", v)
+
+    @field_validator("senderId")
+    @classmethod
+    def sender_letters(cls, v: str) -> str:
+        v = v.strip().upper()
+        if not v.isalpha():
+            raise ValueError("Sender ID is the 6-letter DLT header, e.g. AMBNEO")
+        return v
+
+    @field_validator("template")
+    @classmethod
+    def template_has_code(cls, v: str) -> str:
+        v = sms_settings.normalize_template(v)
+        if v.count(sms_settings.CODE) != 1:
+            raise ValueError("Template must contain the code placeholder exactly once: {#var#} or {code}")
+        return v
+
+
+@router.get("/sms")
+def get_sms_settings(ctx: Admin, db: Db):
+    return _sms_view(db)
+
+
+@router.put("/sms")
+def save_sms_settings(body: SmsSettingsIn, ctx: Admin, db: Db):
+    saved = sms_settings.load_saved(db)
+    password = (body.password or "").strip()
+    if password:
+        password_enc = encrypt_secret(password)
+    elif saved and saved[0].to_config():
+        password_enc = saved[0].password_enc
+    else:
+        raise HTTPException(422, "Enter the Gupshup password.")
+    sms_settings.save(
+        db,
+        sms_settings.SavedGupshup(
+            userid=body.userid,
+            password_enc=password_enc,
+            sender_id=body.senderId,
+            entity_id=body.entityId,
+            template_id=body.templateId,
+            template=body.template,
+        ),
+        ctx.admin.id,
+    )
+    detail = f"user {body.userid}, sender {body.senderId}, template {body.templateId}"
+    db.add(AuditLog(admin_id=ctx.admin.id, action="sms_update", detail=detail))
+    db.commit()
+    return _sms_view(db)
+
+
+class TestSmsIn(BaseModel):
+    mobile: str
+
+    @field_validator("mobile")
+    @classmethod
+    def valid_mobile(cls, v: str) -> str:
+        v = normalize_mobile(v)
+        if not MOBILE_RE.match(v):
+            raise ValueError("Enter a valid 10-digit mobile number")
+        return v
+
+
+@router.post("/sms/test")
+def send_test_sms(body: TestSmsIn, ctx: Admin, db: Db):
+    """Sends the login template with a sample code through the saved Gupshup account."""
+    saved = sms_settings.load_saved(db)
+    config = saved[0].to_config() if saved else None
+    if not saved or not config:
+        raise HTTPException(400, "Save the Gupshup details and password first.")
+    text = saved[0].template.replace(sms_settings.CODE, "123456")
+    try:
+        GupshupSms(config).send(body.mobile, text)
+    except SmsError as e:
+        db.add(AuditLog(admin_id=ctx.admin.id, action="sms_test_failed", detail=str(e)[:500]))
+        db.commit()
+        raise HTTPException(400, f"Test SMS failed. {e}") from None
+    masked = f"+91 ******{body.mobile[-4:]}"
+    db.add(AuditLog(admin_id=ctx.admin.id, action="sms_test", detail=masked))
+    db.commit()
+    return {"sent": True, "to": masked}
 
 
 # ---------- HOD approvers ----------

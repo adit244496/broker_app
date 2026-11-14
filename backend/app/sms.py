@@ -1,6 +1,6 @@
 """
 Login codes by SMS through Gupshup's Enterprise SMS API (DLT-registered sender and template).
-In development without Gupshup credentials, codes go to the server log instead.
+Which account is used (portal settings, else .env) is decided in app/sms_settings.py.
 """
 
 import logging
@@ -35,7 +35,7 @@ class UnconfiguredSms:
     """Production without Gupshup credentials: refuse rather than log login codes."""
 
     def send(self, mobile: str, text: str) -> None:
-        raise SmsError("SMS isn't set up: SMS_PROVIDER=gupshup and the GUPSHUP_* values are required.")
+        raise SmsError("SMS isn't set up: enter the Gupshup details in the admin portal (Settings -> SMS), or set them in .env.")
 
 
 @dataclass(frozen=True)
@@ -101,15 +101,3 @@ def gupshup_config() -> GupshupConfig | None:
     if s.sms_provider != "gupshup" or not all(values):
         return None
     return GupshupConfig(s.gupshup_url, *values, timeout=s.gupshup_timeout_seconds)
-
-
-def get_sms() -> SmsSender:
-    if config := gupshup_config():
-        return GupshupSms(config)
-    # Development without Gupshup: print codes in the log. Production: refuse to send.
-    return ConsoleSms() if get_settings().environment == "development" else UnconfiguredSms()
-
-
-def login_code_text(code: str) -> str:
-    """Must match the DLT-approved template word for word, with the code where {#var#} is."""
-    return get_settings().sms_login_template.replace("{code}", code)

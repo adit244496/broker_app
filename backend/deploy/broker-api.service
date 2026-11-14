@@ -1,0 +1,31 @@
+# systemd unit for the backend API.
+# Install:  sudo cp deploy/broker-api.service /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now broker-api
+# Logs:     journalctl -u broker-api -f
+#
+# Paths assume the code is at /home/srvadmin/broker_app/broker_app and the virtualenv is backend/venv.
+# Change WorkingDirectory/ExecStart if yours differ. WorkingDirectory must be backend/: .env and media/ are
+# read relative to it.
+
+[Unit]
+Description=Ambuja Neotia Broker App API (FastAPI)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=srvadmin
+Group=srvadmin
+WorkingDirectory=/home/srvadmin/broker_app/broker_app/backend
+# Only Nginx (same machine) talks to uvicorn; port 8000 stays closed to the internet.
+# Rate limits in app/ratelimit.py are per worker process, so keep the worker count small.
+ExecStart=/home/srvadmin/broker_app/broker_app/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

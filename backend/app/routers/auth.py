@@ -26,7 +26,8 @@ from app.models import ADMIN, HOD
 from app.reviews import create_review_links, first_stage, send_review_emails
 from app.salesforce.base import Record, SalesforceGateway, can_log_in
 from app.security import hash_otp, hash_password, new_otp, new_token, otp_matches, verify_password
-from app.sms import ConsoleSms, SmsError, SmsSender, get_sms, login_code_text
+from app.sms import ConsoleSms, SmsError, SmsSender
+from app.sms_settings import get_sms, login_code_text
 
 router = APIRouter(prefix="/auth", tags=["Broker auth"])
 log = logging.getLogger("broker_app.auth")
@@ -298,7 +299,7 @@ def request_otp(
     )
     try:
         if body.mobile:
-            sms.send(body.mobile, login_code_text(code))
+            sms.send(body.mobile, login_code_text(db, code))
         else:
             send_login_code(mailer, to, partner.get("Name") or "Partner", code, settings.otp_ttl_seconds // 60)
     except (SmsError, EmailError):

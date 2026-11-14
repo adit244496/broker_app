@@ -195,6 +195,37 @@ export interface EmailSettingsInput {
   security?: SmtpSecurity;
 }
 
+/** The Gupshup account login codes are sent by SMS from. The password is never returned. */
+export interface SmsSettings {
+  /** admin = saved in this portal; env = the server's .env; none = codes only go to the server log. */
+  source: 'admin' | 'env' | 'none';
+  configured: boolean;
+  userid?: string;
+  /** 6-letter DLT header, e.g. AMBNEO. */
+  senderId?: string;
+  /** DLT Principal Entity ID. */
+  entityId?: string;
+  /** DLT Template ID of the approved OTP template. */
+  templateId?: string;
+  /** The approved template text, with {code} where the DLT template has {#var#}. */
+  template: string;
+  hasPassword: boolean;
+  /** The saved password can't be decrypted (the server's secret key changed): enter it again. */
+  passwordUnreadable?: boolean;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface SmsSettingsInput {
+  userid: string;
+  /** Empty keeps the saved password. */
+  password?: string;
+  senderId: string;
+  entityId: string;
+  templateId: string;
+  template: string;
+}
+
 export type LeadFieldType = 'text' | 'textarea' | 'phone' | 'email' | 'date' | 'number' | 'picklist' | 'project';
 
 /** One field of the broker app's "create lead" form, sent to the Salesforce Lead field `sfField`. */
