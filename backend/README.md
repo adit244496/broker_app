@@ -34,7 +34,7 @@ CREATE DATABASE broker_app OWNER broker_app;
 Then:
 
 ```bash
-python -m app.cli create-admin --email admin@ambujaneotia.com --name "Portal Admin"   # prompts for a password (12+ chars)
+python -m app.cli create-admin --email admin@ambujaneotia.com --name "Portal Admin"   # prompts for a password (8+ chars)
 uvicorn app.main:app --reload --reload-include .env --port 8000   # also restarts when .env changes
 ```
 
@@ -281,7 +281,7 @@ Admins list HODs in the portal (**Settings → HOD approvers**: name + email, an
 An HOD with a password can sign in to the portal, where they see only **Approvals** (registrations waiting for their
 first approval) and **Change password**; every other admin endpoint refuses HOD sessions. Admins set or reset an
 HOD's password (`PUT /admin/settings/hods/{id}/password`), and any portal user changes their own
-(`POST /admin/auth/password`, current password required, 12+ characters); both sign the user out elsewhere.
+(`POST /admin/auth/password`, current password required, 8+ characters); both sign the user out elsewhere.
 A registration needs two approvals before it reaches Salesforce (`registrations.stage`: `hod`, then `admin`):
 
 1. When a broker registers, every HOD is emailed the details with **Approve** and **Deny** buttons.

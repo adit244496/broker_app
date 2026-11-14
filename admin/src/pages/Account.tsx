@@ -3,7 +3,7 @@ import { authApi } from '@/api/services';
 import { useAuth } from '@/auth';
 import { Card, PageHeader } from '@/components/ui';
 
-const MIN = 12;
+const MIN = 8;
 
 /** Change your own portal password (admins and HODs). Other signed-in devices are signed out. */
 export function AccountPage() {

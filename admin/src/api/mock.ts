@@ -327,7 +327,7 @@ export const mock = {
     await delay(400);
     requireAdmin();
     if (currentPassword !== MOCK_ADMIN.password) throw new Error('Your current password is incorrect.');
-    if (newPassword.length < 12) throw new Error('Use at least 12 characters.');
+    if (newPassword.length < 8) throw new Error('Use at least 8 characters.');
   },
   logout() {
     session = undefined;
@@ -565,7 +565,7 @@ export const mock = {
   async setHodPassword(id: number, password: string) {
     await delay(300);
     requireAdmin();
-    if (password.length < 12) throw new Error('Use at least 12 characters.');
+    if (password.length < 8) throw new Error('Use at least 8 characters.');
     hods = hods.map((h) => (h.id === id ? { ...h, hasPassword: true } : h));
   },
 

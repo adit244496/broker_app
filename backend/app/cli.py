@@ -15,7 +15,7 @@ from app.db import Base, SessionLocal, add_missing_columns, engine
 from app.models import AdminUser
 from app.security import hash_password
 
-MIN_PASSWORD = 12
+MIN_PASSWORD = 8
 
 
 def init_db() -> None:

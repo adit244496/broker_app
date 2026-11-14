@@ -349,13 +349,13 @@ function HodCard({ emailReady }: { emailReady: boolean }) {
                             type="password"
                             autoComplete="new-password"
                             aria-label={`New password for ${h.name}`}
-                            placeholder="12+ characters"
+                            placeholder="8+ characters"
                             value={newPw}
                             onChange={(e) => setNewPw(e.target.value)}
                             autoFocus
                             style={{ height: 34, minWidth: 150 }}
                           />
-                          <button className="btn btn-primary" disabled={!!busy || newPw.length < 12} onClick={() => savePassword(h)}>
+                          <button className="btn btn-primary" disabled={!!busy || newPw.length < 8} onClick={() => savePassword(h)}>
                             {busy === `pw-${h.id}` ? 'Saving…' : 'Save'}
                           </button>
                           <button className="btn btn-ghost" disabled={!!busy} onClick={() => setPwFor(undefined)}>
@@ -412,13 +412,13 @@ function HodCard({ emailReady }: { emailReady: boolean }) {
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="12+ characters"
+              placeholder="8+ characters"
             />
           </label>
           <button
             className="btn btn-primary"
             type="submit"
-            disabled={!!busy || name.trim().length < 2 || !email.includes('@') || (password.length > 0 && password.length < 12)}
+            disabled={!!busy || name.trim().length < 2 || !email.includes('@') || (password.length > 0 && password.length < 8)}
           >
             {busy === 'add' ? 'Adding…' : 'Add HOD'}
           </button>

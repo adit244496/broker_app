@@ -24,7 +24,7 @@ from app.salesforce.base import ACTIVE, APPROVED, PENDING, Record, SalesforceNot
 from app.security import hash_password, new_token, verify_password
 
 # Portal passwords (admins and HODs).
-PORTAL_MIN_PASSWORD = 12
+PORTAL_MIN_PASSWORD = 8
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
