@@ -8,7 +8,7 @@
       "distribution": "internal",
       "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://broker-api.4-224-153-24.sslip.io",
+        "EXPO_PUBLIC_API_BASE_URL": "https://neocp.ambujaneotia.com/api",
         "EXPO_PUBLIC_USE_MOCK": "false"
       },
       "android": {
@@ -19,7 +19,7 @@
       "channel": "production",
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://api.example.com",
+        "EXPO_PUBLIC_API_BASE_URL": "https://neocp.ambujaneotia.com/api",
         "EXPO_PUBLIC_USE_MOCK": "false"
       }
     }
