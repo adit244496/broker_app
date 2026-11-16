@@ -251,9 +251,9 @@ export type PartnerLookup =
   | { status: 'rejected'; reason?: string }
   | { status: 'inactive' };
 
-/** A login code was sent by SMS to the registered mobile, or by email to the registered address. */
+/** A login code was sent by SMS or WhatsApp to the registered mobile, or by email to the registered address. */
 export interface OtpRequestResult {
-  channel: 'sms' | 'email';
+  channel: 'sms' | 'whatsapp' | 'email';
   /** Where it went, partly hidden: "+91 ******2345" or "co*****@abcbroker.in". */
   masked: string;
 }

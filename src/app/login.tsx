@@ -228,7 +228,7 @@ export default function LoginScreen() {
                 {error ? <Text style={styles.error}>{error}</Text> : null}
                 <LookupNotice result={lookup} what={what} onRegister={goRegister} />
                 <Button
-                  title={mode === 'mobile' ? 'Send OTP by SMS' : 'Email me a login code'}
+                  title={mode === 'mobile' ? 'Send OTP' : 'Email me a login code'}
                   icon={mode === 'mobile' ? 'chatbubble-ellipses-outline' : 'mail-outline'}
                   loading={busy}
                   onPress={sendCode}
@@ -284,7 +284,7 @@ export default function LoginScreen() {
                 <Text style={styles.subtitle}>
                   {sent?.channel === 'email'
                     ? `Enter the 6-digit code we sent to ${sent.masked}. It may take a minute; check your spam folder too.`
-                    : `Enter the 6-digit code we sent by SMS to ${sent?.masked ?? describeLoginId(id)}.`}
+                    : `Enter the 6-digit code we sent ${sent?.channel === 'whatsapp' ? 'on WhatsApp' : 'by SMS'} to ${sent?.masked ?? describeLoginId(id)}.`}
                 </Text>
                 <TextInput
                   ref={otpRef}

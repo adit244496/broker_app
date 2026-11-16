@@ -10,6 +10,8 @@ import type {
   EmailSettingsInput,
   SmsSettings,
   SmsSettingsInput,
+  WhatsAppSettings,
+  WhatsAppSettingsInput,
   Enquiry,
   EnquiryFilters,
   EnquiryStatus,
@@ -303,6 +305,7 @@ let accountForm: AccountForm = { fields: defaultAccountFields(), coreKeys: CORE_
 let hods: Hod[] = [];
 let nextHodId = 1;
 let emailSettings: EmailSettings = { source: 'none', configured: false, hasPassword: false };
+let whatsappSettings: WhatsAppSettings = { enabled: false, active: false, hasApiKey: false, codeInButton: true };
 let smsSettings: SmsSettings = {
   source: 'none',
   configured: false,
@@ -491,6 +494,39 @@ export const mock = {
     await delay(800);
     requireAdmin();
     if (!smsSettings.hasPassword) throw new Error('Save the Gupshup details and password first.');
+    return { sent: true, to: `+91 ******${mobile.replace(/\D/g, '').slice(-4)}` };
+  },
+
+  async getWhatsappSettings(): Promise<WhatsAppSettings> {
+    await delay(200);
+    requireAdmin();
+    return { ...whatsappSettings };
+  },
+
+  async saveWhatsappSettings(input: WhatsAppSettingsInput): Promise<WhatsAppSettings> {
+    await delay(500);
+    requireAdmin();
+    if (!input.apiKey?.trim() && !whatsappSettings.hasApiKey) throw new Error('Enter the Gupshup API key.');
+    let source = input.source.replace(/\D/g, '');
+    if (source.length === 10) source = `91${source}`;
+    whatsappSettings = {
+      enabled: input.enabled,
+      active: input.enabled,
+      source,
+      appName: input.appName.trim(),
+      templateId: input.templateId.trim(),
+      codeInButton: input.codeInButton,
+      hasApiKey: true,
+      updatedAt: new Date().toISOString(),
+      updatedBy: session?.user.name,
+    };
+    return { ...whatsappSettings };
+  },
+
+  async testWhatsapp(mobile: string) {
+    await delay(800);
+    requireAdmin();
+    if (!whatsappSettings.hasApiKey) throw new Error('Save the WhatsApp details and API key first.');
     return { sent: true, to: `+91 ******${mobile.replace(/\D/g, '').slice(-4)}` };
   },
 

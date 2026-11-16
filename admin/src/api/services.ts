@@ -8,6 +8,8 @@ import type {
   EmailSettingsInput,
   SmsSettings,
   SmsSettingsInput,
+  WhatsAppSettings,
+  WhatsAppSettingsInput,
   Enquiry,
   EnquiryFilters,
   Hod,
@@ -123,6 +125,19 @@ export const settingsApi = {
   async testSms(mobile: string): Promise<{ sent: boolean; to: string }> {
     if (env.useMock) return mock.testSms(mobile);
     return request(endpoints.testSms(), { method: 'POST', body: { mobile } });
+  },
+  async getWhatsapp(): Promise<WhatsAppSettings> {
+    if (env.useMock) return mock.getWhatsappSettings();
+    return request<WhatsAppSettings>(endpoints.whatsappSettings());
+  },
+  async saveWhatsapp(input: WhatsAppSettingsInput): Promise<WhatsAppSettings> {
+    if (env.useMock) return mock.saveWhatsappSettings(input);
+    return request<WhatsAppSettings>(endpoints.whatsappSettings(), { method: 'PUT', body: input });
+  },
+  /** Sends the Authentication template with a sample code to `mobile`, even before WhatsApp is switched on. */
+  async testWhatsapp(mobile: string): Promise<{ sent: boolean; to: string }> {
+    if (env.useMock) return mock.testWhatsapp(mobile);
+    return request(endpoints.testWhatsapp(), { method: 'POST', body: { mobile } });
   },
   async getAccountForm(): Promise<AccountForm> {
     if (env.useMock) return mock.getAccountForm();

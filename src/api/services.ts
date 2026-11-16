@@ -26,7 +26,7 @@ type CreateResponse = { id: string; success?: boolean; record?: Record<string, a
 // ---------- Auth (brokers log in with their registered mobile or email: a code, or a password) ----------
 
 type LoginResponse = { token: string; user?: Record<string, any>; account?: Record<string, any> };
-type OtpResponse = { channel?: 'sms' | 'email'; maskedMobile?: string; maskedEmail?: string };
+type OtpResponse = { channel?: 'sms' | 'whatsapp' | 'email'; maskedMobile?: string; maskedEmail?: string };
 
 function sessionFrom(res: LoginResponse): Session {
   const user = res.user ? map.profileFromSf(res.user) : map.profileFromBroker(map.brokerFromSf(res.account ?? {}));
@@ -44,12 +44,12 @@ export const authApi = {
     return map.partnerLookupFromSf(await request(path, { method: 'POST', body: { ...id, pushToken }, auth: false }));
   },
 
-  /** Sends a login code: by SMS for a mobile, by email for an email. Refused unless active and added. */
+  /** Sends a login code: by SMS or WhatsApp for a mobile (the admin decides), by email for an email. Refused unless active and added. */
   async requestOtp(id: LoginId): Promise<OtpRequestResult> {
     if (env.useMock) return mock.requestOtp(id);
     const res = await request<OtpResponse>(endpoints.requestOtp(), { method: 'POST', body: id, auth: false });
     return res.maskedMobile
-      ? { channel: 'sms', masked: res.maskedMobile }
+      ? { channel: res.channel === 'whatsapp' ? 'whatsapp' : 'sms', masked: res.maskedMobile }
       : { channel: 'email', masked: res.maskedEmail ?? describeLoginId(id) };
   },
 

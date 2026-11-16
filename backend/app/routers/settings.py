@@ -1,4 +1,4 @@
-"""Admin settings: the SMTP and Gupshup accounts login codes are sent from, and the HODs who approve registrations."""
+"""Admin settings: the SMTP, Gupshup SMS and Gupshup WhatsApp accounts login codes are sent from, and the HODs who approve registrations."""
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import func, select, update
@@ -8,9 +8,10 @@ from app.config import get_settings
 from app.deps import Admin, Db, Reviewer, Salesforce
 from app.email_settings import PRESETS, Provider, SavedSmtp, Security, active_config, load_saved, save
 from app.db import utcnow
-from app import account_form, lead_form, sms_settings
+from app import account_form, lead_form, sms_settings, whatsapp_settings
 from app.partners import MOBILE_RE, normalize_mobile
 from app.sms import GupshupSms, SmsError
+from app.whatsapp import GupshupWhatsApp, WhatsAppError
 from app.salesforce.base import SalesforceError
 from app.models import HOD, AdminUser, AppSetting, AuditLog, ReviewLink
 from app.notify import EmailError, SmtpEmail
@@ -267,6 +268,113 @@ def send_test_sms(body: TestSmsIn, ctx: Admin, db: Db):
         raise HTTPException(400, f"Test SMS failed. {e}") from None
     masked = f"+91 ******{body.mobile[-4:]}"
     db.add(AuditLog(admin_id=ctx.admin.id, action="sms_test", detail=masked))
+    db.commit()
+    return {"sent": True, "to": masked}
+
+
+# ---------- WhatsApp (Gupshup) ----------
+
+
+def _whatsapp_view(db: Db) -> dict:
+    """Never includes the API key."""
+    saved = whatsapp_settings.load_saved(db)
+    if not saved:
+        return {"enabled": False, "active": False, "hasApiKey": False, "codeInButton": True}
+    wa, row = saved
+    by = db.get(AdminUser, row.updated_by) if row.updated_by else None
+    readable = wa.to_config() is not None
+    return {
+        "enabled": wa.enabled,
+        # Login codes are going by WhatsApp right now.
+        "active": wa.enabled and readable,
+        "source": wa.source,
+        "appName": wa.app_name,
+        "templateId": wa.template_id,
+        "codeInButton": wa.code_in_button,
+        "hasApiKey": True,
+        # The saved key can't be read, e.g. after SECRET_KEY changed: it must be entered again.
+        "apiKeyUnreadable": not readable,
+        "updatedAt": row.updated_at.isoformat() if row.updated_at else None,
+        "updatedBy": by.name if by else None,
+    }
+
+
+class WhatsAppSettingsIn(BaseModel):
+    # Leave empty to keep the saved one.
+    apiKey: str | None = Field(default=None, max_length=200)
+    source: str = Field(min_length=1, max_length=20)
+    appName: str = Field(min_length=1, max_length=100)
+    templateId: str = Field(min_length=1, max_length=100)
+    codeInButton: bool = True
+    enabled: bool = False
+
+    @field_validator("source")
+    @classmethod
+    def source_number(cls, v: str) -> str:
+        digits = "".join(ch for ch in v if ch.isdigit())
+        if len(digits) == 10:
+            digits = "91" + digits
+        if len(digits) < 11 or len(digits) > 15:
+            raise ValueError("Enter the WhatsApp business number with country code, e.g. 916292224947")
+        return digits
+
+    @field_validator("appName", "templateId")
+    @classmethod
+    def no_spaces_around(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Required")
+        return v
+
+
+@router.get("/whatsapp")
+def get_whatsapp_settings(ctx: Admin, db: Db):
+    return _whatsapp_view(db)
+
+
+@router.put("/whatsapp")
+def save_whatsapp_settings(body: WhatsAppSettingsIn, ctx: Admin, db: Db):
+    saved = whatsapp_settings.load_saved(db)
+    api_key = (body.apiKey or "").strip()
+    if api_key:
+        api_key_enc = encrypt_secret(api_key)
+    elif saved and saved[0].to_config():
+        api_key_enc = saved[0].api_key_enc
+    else:
+        raise HTTPException(422, "Enter the Gupshup API key.")
+    whatsapp_settings.save(
+        db,
+        whatsapp_settings.SavedWhatsApp(
+            api_key_enc=api_key_enc,
+            source=body.source,
+            app_name=body.appName,
+            template_id=body.templateId,
+            code_in_button=body.codeInButton,
+            enabled=body.enabled,
+        ),
+        ctx.admin.id,
+    )
+    detail = f"{'on' if body.enabled else 'off'}, app {body.appName}, number {body.source}, template {body.templateId}"
+    db.add(AuditLog(admin_id=ctx.admin.id, action="whatsapp_update", detail=detail[:500]))
+    db.commit()
+    return _whatsapp_view(db)
+
+
+@router.post("/whatsapp/test")
+def send_test_whatsapp(body: TestSmsIn, ctx: Admin, db: Db):
+    """Sends the Authentication template with a sample code, whether or not WhatsApp is switched on yet."""
+    saved = whatsapp_settings.load_saved(db)
+    config = saved[0].to_config() if saved else None
+    if not config:
+        raise HTTPException(400, "Save the WhatsApp details and API key first.")
+    try:
+        GupshupWhatsApp(config).send_code(body.mobile, "123456")
+    except WhatsAppError as e:
+        db.add(AuditLog(admin_id=ctx.admin.id, action="whatsapp_test_failed", detail=str(e)[:500]))
+        db.commit()
+        raise HTTPException(400, f"Test message failed. {e}") from None
+    masked = f"+91 ******{body.mobile[-4:]}"
+    db.add(AuditLog(admin_id=ctx.admin.id, action="whatsapp_test", detail=masked))
     db.commit()
     return {"sent": True, "to": masked}
 

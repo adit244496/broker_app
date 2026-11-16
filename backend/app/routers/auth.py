@@ -26,8 +26,7 @@ from app.models import ADMIN, HOD
 from app.reviews import create_review_links, first_stage, send_review_emails
 from app.salesforce.base import Record, SalesforceGateway, can_log_in
 from app.security import hash_otp, hash_password, new_otp, new_token, otp_matches, verify_password
-from app.sms import ConsoleSms, SmsError, SmsSender
-from app.sms_settings import get_sms, login_code_text
+from app.login_codes import CodeNotSent, MobileCodeSender, get_mobile_code_sender
 
 router = APIRouter(prefix="/auth", tags=["Broker auth"])
 log = logging.getLogger("broker_app.auth")
@@ -280,9 +279,9 @@ def request_otp(
     db: Db,
     sf: Salesforce,
     mailer: Annotated[EmailSender, Depends(get_email)],
-    sms: Annotated[SmsSender, Depends(get_sms)],
+    mobile_sender: Annotated[MobileCodeSender, Depends(get_mobile_code_sender)],
 ):
-    """Sends a login code to an active, added partner: by SMS for a mobile, by email for an email."""
+    """Sends a login code to an active, added partner: by SMS or WhatsApp for a mobile, by email for an email."""
     settings = get_settings()
     partner = _active_partner(sf, body)
     sync_partner(db, partner)
@@ -299,19 +298,19 @@ def request_otp(
     )
     try:
         if body.mobile:
-            sms.send(body.mobile, login_code_text(db, code))
+            mobile_sender.send_code(body.mobile, code)
         else:
             send_login_code(mailer, to, partner.get("Name") or "Partner", code, settings.otp_ttl_seconds // 60)
-    except (SmsError, EmailError):
+    except (CodeNotSent, EmailError) as e:
         db.rollback()  # never keep a code the broker didn't receive
-        what = "SMS" if body.mobile else "email"
+        what = {"sms": "SMS", "whatsapp": "WhatsApp message"}[e.channel] if isinstance(e, CodeNotSent) else "email"
         raise HTTPException(502, f"We couldn't send the {what}. Please try again shortly.") from None
     db.commit()
-    console = isinstance(sms, ConsoleSms) if body.mobile else isinstance(mailer, ConsoleEmail)
+    console = mobile_sender.console if body.mobile else isinstance(mailer, ConsoleEmail)
     if settings.log_login_codes and settings.environment == "development" and not console:
         log.warning("DEV login code for %s: %s (LOG_LOGIN_CODES is on)", to, code)
     if body.mobile:
-        return {"channel": "sms", "maskedMobile": mask_mobile(body.mobile)}
+        return {"channel": mobile_sender.channel, "maskedMobile": mask_mobile(body.mobile)}
     return {"channel": "email", "maskedEmail": mask_email(to)}
 
 

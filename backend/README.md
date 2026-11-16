@@ -94,6 +94,18 @@ all from the client's Gupshup account and DLT registration:
 
 Test it with `ENVIRONMENT=development SMS_PROVIDER=gupshup` and a real broker mobile before going live.
 
+
+## WhatsApp login codes (Gupshup)
+
+Instead of SMS, mobile login codes can go on WhatsApp through Gupshup's WhatsApp API (Conversation Cloud,
+`app/whatsapp.py`), with a Meta-approved **Authentication** template. An admin sets it in the portal
+(**Settings → WhatsApp (Gupshup)**: API key, Gupshup app name, business number with country code, template ID,
+whether the template has a Copy code button) and switches on **Send mobile login codes on WhatsApp**. The API key
+is stored encrypted with a key derived from `SECRET_KEY`. While it's switched off, codes go by SMS exactly as
+above; email codes are never affected. `/auth/otp/request` answers `"channel": "whatsapp"` and the app says so.
+The test button works before switching on. Gupshup accepting a message doesn't guarantee delivery (it's
+asynchronous), so check the test phone.
+
 ## Who sees which project
 
 Two layers. Salesforce decides which projects are in the app at all (its projects endpoint). On top of that an

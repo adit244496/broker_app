@@ -226,6 +226,37 @@ export interface SmsSettingsInput {
   template: string;
 }
 
+/** The Gupshup WhatsApp account mobile login codes can be sent from. The API key is never returned. */
+export interface WhatsAppSettings {
+  /** Switched on: mobile login codes go by WhatsApp instead of SMS. */
+  enabled: boolean;
+  /** Codes are going by WhatsApp right now (switched on and the saved key can be read). */
+  active: boolean;
+  /** Business number with country code, e.g. 916292224947. */
+  source?: string;
+  /** Gupshup app name the number belongs to. */
+  appName?: string;
+  /** Gupshup ID of the approved Authentication template. */
+  templateId?: string;
+  /** The template has a "Copy code" button (the code is sent for it too). */
+  codeInButton: boolean;
+  hasApiKey: boolean;
+  /** The saved key can't be decrypted (the server's secret key changed): enter it again. */
+  apiKeyUnreadable?: boolean;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface WhatsAppSettingsInput {
+  /** Empty keeps the saved key. */
+  apiKey?: string;
+  source: string;
+  appName: string;
+  templateId: string;
+  codeInButton: boolean;
+  enabled: boolean;
+}
+
 export type LeadFieldType = 'text' | 'textarea' | 'phone' | 'email' | 'date' | 'number' | 'picklist' | 'project';
 
 /** One field of the broker app's "create lead" form, sent to the Salesforce Lead field `sfField`. */
