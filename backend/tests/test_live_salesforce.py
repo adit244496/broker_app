@@ -408,13 +408,14 @@ def test_leads_are_scoped_and_in_app_shape(fake):
 
 def test_duplicate_lead_lookup(fake):
     sf = leads_sf(fake)
-    assert sf.find_duplicate_lead(mobile="9876543210", email=None, project_id=PROJECT_ID)["Id"] == "00QC1000000AAA01AA"
+    assert sf.find_duplicate_lead(mobile="9876543210")["Id"] == "00QC1000000AAA01AA"
     # Stored as Phone "+91 98300-55555" by another source.
-    assert sf.find_duplicate_lead(mobile="9830055555", email=None, project_id=PROJECT_ID) is not None
-    assert sf.find_duplicate_lead(mobile="9000000000", email="priya@example.com", project_id=PROJECT_ID)["Channel_Partner__c"] == OTHER_PARTNER_ID
-    assert sf.find_duplicate_lead(mobile="9876543210", email=None, project_id="a0PC1000000AAAAAA2") is None
-    assert sf.find_duplicate_lead(mobile="9000000000", email="x' OR Id != 'y@z.com", project_id=PROJECT_ID) is None
-    assert not any("OR Id" in str(r.url) for r in fake.requests)
+    assert sf.find_duplicate_lead(mobile="9830055555") is not None
+    assert sf.find_duplicate_lead(mobile="9123456780")["Channel_Partner__c"] == OTHER_PARTNER_ID
+    # Mobile only, in any project: an unknown mobile is no duplicate, and nothing filters by project or email.
+    assert sf.find_duplicate_lead(mobile="9000000000") is None
+    queries = [str(r.url) for r in fake.requests if r.url.path.endswith("/query")]
+    assert queries and not any("Project__c+%3D" in q or "Email" in q.split("WHERE")[-1] for q in queries)
 
 
 def test_create_lead_posts_to_salesforce(fake):
@@ -643,7 +644,7 @@ def test_leads_are_listed_from_our_copy(fake):
     sf.local_leads = Leads()
     assert sf.list_enquiries(partner_id=PARTNER_ID)[0]["filters"]["partner_id"] == PARTNER_ID
     assert sf.get_enquiry("00QC6000001AbCdEAK")["Id"] == "00QC6000001AbCdEAK"
-    assert sf.find_duplicate_lead(mobile="98300 12345", email=None, project_id="a01")["Id"] == "00Q1"
+    assert sf.find_duplicate_lead(mobile="98300 12345")["Id"] == "00Q1"
     assert not any(r.url.path.endswith("/query") for r in fake.requests)
 
 

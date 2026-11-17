@@ -102,8 +102,8 @@ def status_history(enquiry_id: str, ctx: Broker, sf: Salesforce):
     return {"records": sf.enquiry_status_history(enquiry_id)}
 
 
+# Duplicates are by mobile number only, in any project (as Salesforce checks).
 LEAD_EXISTS_ANYWHERE = "This customer is already registered with Ambuja Neotia, so a new lead can't be created."
-LEAD_EXISTS = "This customer is already registered for {project}, so a new lead can't be created."
 
 
 @router.get("/lead-form")
@@ -119,8 +119,8 @@ def create_enquiry(
     sf: Salesforce,
     body: Annotated[dict[str, Any], Body(description="Field values by form key: {\"fields\": {...}}")],
 ):
-    """Creates a Salesforce Lead from the admin-defined lead form, unless one already exists for this
-    customer and project. The broker's Salesforce Account Id is added here, never taken from the app."""
+    """Creates a Salesforce Lead from the admin-defined lead form, unless a lead with this mobile number
+    already exists (in any project). The broker's Salesforce Account Id is added here, never taken from the app."""
     values = body.get("fields") if isinstance(body.get("fields"), dict) else body  # older apps send a flat object
     form = lead_form.load(db)
     # Only projects this broker can see (Salesforce's list, narrowed by the admin's per-project setting).
@@ -133,15 +133,16 @@ def create_enquiry(
     project_id = sf_values[by_key["project"].sfField]
     project = projects[project_id]
     mobile = sf_values[by_key["mobile"].sfField]
-    email = sf_values.get(by_key["email"].sfField)
 
-    existing = sf.find_duplicate_lead(mobile=mobile, email=email, project_id=project_id)
+    existing = sf.find_duplicate_lead(mobile=mobile)
     if existing:
         if existing.get("Channel_Partner__c") == ctx.account_id:
             number = existing.get("Enquiry_Number__c") or existing["Id"]
-            raise HTTPException(409, f"You have already submitted this customer for {project['Name']} (lead {number}).")
-        # Don't reveal which broker, or which other source, owns the customer.
-        raise HTTPException(409, LEAD_EXISTS.format(project=project["Name"]))
+            where = (existing.get("Project__r") or {}).get("Name")
+            project_part = f" for {where}" if where else ""
+            raise HTTPException(409, f"You have already submitted this customer{project_part} (lead {number}).")
+        # Don't reveal which broker, project or other source owns the customer.
+        raise HTTPException(409, LEAD_EXISTS_ANYWHERE)
 
     name = " ".join(str(sf_values.get(by_key[k].sfField) or "") for k in ("first_name", "last_name")).strip()
     try:

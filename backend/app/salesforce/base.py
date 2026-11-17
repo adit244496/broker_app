@@ -80,8 +80,8 @@ class SalesforceGateway(Protocol):
     def create_enquiry(self, fields: Record, customer_name: str | None = None, endpoint_keys: dict[str, str] | None = None) -> Record:
         """`endpoint_keys`: {Lead field: JSON key} for Salesforce's leads endpoint (from the admin's lead form)."""
         ...
-    def find_duplicate_lead(self, *, mobile: str, email: str | None, project_id: str) -> Record | None:
-        """An existing lead (from any source or broker) for this project with the same mobile or email."""
+    def find_duplicate_lead(self, *, mobile: str) -> Record | None:
+        """An existing lead with the same mobile number: any project, any source or broker."""
         ...
 
     # Projects

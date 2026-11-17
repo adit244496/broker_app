@@ -440,17 +440,14 @@ export const mock = {
       remarks: [values.remarks, values.address && `Address: ${values.address}`].filter(Boolean).join(' · ') || undefined,
     };
     const broker = currentBroker();
-    // Same rule as the backend: one lead per customer (mobile or email) per project, across all brokers.
-    const email = input.email?.trim().toLowerCase();
-    const existing = enquiries.find(
-      (x) => x.projectId === input.projectId && (x.mobile === input.mobile || (!!email && x.email?.toLowerCase() === email)),
-    );
+    // Same rule as the backend: duplicates are by mobile number only, in any project, across all brokers.
+    const existing = enquiries.find((x) => x.mobile === input.mobile);
     if (existing) {
-      const project = projects.find((p) => p.id === input.projectId)?.name ?? 'this project';
+      const project = projects.find((p) => p.id === existing.projectId)?.name;
       throw new ApiError(
         existing.brokerId === broker.id
-          ? `You have already submitted this customer for ${project} (lead ${existing.enquiryNumber}).`
-          : `This customer is already registered for ${project}, so a new lead can't be created.`,
+          ? `You have already submitted this customer${project ? ` for ${project}` : ''} (lead ${existing.enquiryNumber}).`
+          : "This customer is already registered with Ambuja Neotia, so a new lead can't be created.",
         409,
       );
     }

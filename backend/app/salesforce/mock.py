@@ -239,17 +239,8 @@ class MockSalesforce:
             for i, status in enumerate(path)
         ]
 
-    def find_duplicate_lead(self, *, mobile: str, email: str | None, project_id: str) -> Record | None:
-        email = (email or "").strip().lower()
-        return next(
-            (
-                deepcopy(e)
-                for e in self._enquiries
-                if e["Project__c"] == project_id
-                and (e["MobilePhone"] == mobile or (email and (e.get("Email") or "").lower() == email))
-            ),
-            None,
-        )
+    def find_duplicate_lead(self, *, mobile: str) -> Record | None:
+        return next((deepcopy(e) for e in self._enquiries if e["MobilePhone"] == mobile), None)
 
     def create_enquiry(self, fields: Record, customer_name: str | None = None, endpoint_keys: dict[str, str] | None = None) -> Record:
         project = self.get_project(fields.get("Project__c") or "")

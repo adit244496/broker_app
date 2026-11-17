@@ -48,22 +48,25 @@ def test_duplicate_lead_is_refused(client, sf, mail):
     assert again.status_code == 409
     assert "already submitted" in again.json()["message"]
 
-    # Same mobile for another project is a new lead.
-    assert client.post("/enquiries", headers=token, json=_new_lead(Project__c="a0P002")).status_code == 201
+    # Duplicates are by mobile only: the same mobile for another project is refused too...
+    other = client.post("/enquiries", headers=token, json=_new_lead(Project__c="a0P002"))
+    assert other.status_code == 409 and "already submitted" in other.json()["message"]
+    # ...while the same name with a different mobile is a new lead.
+    assert client.post("/enquiries", headers=token, json=_new_lead(MobilePhone="9876501299")).status_code == 201
 
-    # Another broker's customer: refused without saying whose.
+    # Another broker's customer, in any project: refused without saying whose or where.
     theirs = sf.list_enquiries(partner_id="001A2")[0]
-    res = client.post("/enquiries", headers=token, json=_new_lead(MobilePhone=theirs["MobilePhone"], Project__c=theirs["Project__c"]))
+    res = client.post("/enquiries", headers=token, json=_new_lead(MobilePhone=theirs["MobilePhone"], Project__c="a0P002"))
     assert res.status_code == 409
     assert "already registered" in res.json()["message"] and "Skyline" not in res.json()["message"]
     assert len(sf.list_enquiries(partner_id="001A1", search="Asha")) == 2
 
 
-def test_duplicate_by_email(client, mail):
+def test_same_email_with_another_mobile_is_not_a_duplicate(client, mail):
     token = bearer(broker_token(client, mail, ABC_EMAIL))
     assert client.post("/enquiries", headers=token, json=_new_lead(Email="asha@example.com")).status_code == 201
     res = client.post("/enquiries", headers=token, json=_new_lead(MobilePhone="9000000001", Email="ASHA@example.com"))
-    assert res.status_code == 409
+    assert res.status_code == 201
 
 
 def test_hidden_project_takes_no_leads(client, sf, mail):

@@ -701,30 +701,24 @@ class LiveSalesforce:
             for r in rows
         ]
 
-    def find_duplicate_lead(self, *, mobile: str, email: str | None, project_id: str) -> Record | None:
+    def find_duplicate_lead(self, *, mobile: str) -> Record | None:
+        """Duplicates are by mobile number only, across every project (as Salesforce's leads endpoint checks)."""
         mobile = _digits(mobile)
-        email = (email or "").strip()
         if len(mobile) != 10:
             return None
         if self._leads_endpoint:
             # Only leads submitted through the app are known here; Salesforce checks every lead on create (409).
-            return self.local_leads.find(mobile=mobile, project_id=project_id)
+            return self.local_leads.find(mobile=mobile)
         meta = self._lead_meta()
-        project_field, _ = self._lead_lookups()
-        # Any source, any broker. Phone formats vary ("98300 12345", "+91-..."), so narrow by the last three
-        # digits and compare digits only, as for partners.
+        # Any project, source or broker. Phone formats vary ("98300 12345", "+91-..."), so narrow by the last
+        # three digits and compare digits only, as for partners.
         tail = mobile[-3:]
         match = [f"{f} LIKE '%{tail}%'" for f in ("MobilePhone", "Phone") if f in meta]
-        if email and EMAIL_RE.match(email):
-            match.append(f"Email = '{_soql_string(email)}'")
-        soql = (
-            f"SELECT {self._lead_select()} FROM {self._lead_object()} "
-            f"WHERE {project_field} = '{_require_id(project_id)}' AND ({' OR '.join(match)}) ORDER BY CreatedDate DESC"
-        )
+        if not match:
+            return None
+        soql = f"SELECT {self._lead_select()} FROM {self._lead_object()} WHERE ({' OR '.join(match)}) ORDER BY CreatedDate DESC"
         for raw in self._query(soql):
-            same_mobile = mobile in (_digits(raw.get("MobilePhone")), _digits(raw.get("Phone")))
-            same_email = bool(email) and (raw.get("Email") or "").lower() == email.lower()
-            if same_mobile or same_email:
+            if mobile in (_digits(raw.get("MobilePhone")), _digits(raw.get("Phone"))):
                 return self._to_lead(raw)
         return None
 
