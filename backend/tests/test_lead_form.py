@@ -353,3 +353,32 @@ def test_lead_statuses_are_refreshed_from_salesforce_when_the_broker_looks(clien
     monkeypatch.setattr(broker_router, "_lead_refreshed", {})
     assert client.get("/enquiries", headers=broker).status_code == 200
     assert LocalLeads().get(lead_id)["Status"] == "Contacted"
+
+
+def test_site_visit_and_opportunity_stage_from_the_leads_endpoint(client, mail, sf, monkeypatch):
+    from app.lead_store import LocalLeads
+    from app.routers import broker as broker_router
+
+    broker = bearer(broker_token(client, mail, ABC_EMAIL))
+    lead_id = client.post("/enquiries", headers=broker, json={"fields": {**LEAD, "mobile": "9876505555"}}).json()["id"]
+    reply = {"leadId": lead_id, "status": "Visit confirmed", "siteVisitDate": "2026-11-20"}
+    monkeypatch.setattr(sf, "broker_lead_statuses", lambda partner_id: [dict(reply)], raising=False)
+
+    def look():
+        monkeypatch.setattr(broker_router, "_lead_refreshed", {})
+        client.get("/enquiries", headers=broker)
+        return LocalLeads().get(lead_id)
+
+    lead = look()
+    assert lead["Status"] == "Visit confirmed" and lead["Site_Visit_Date__c"] == "2026-11-20"
+
+    # Only the date moved: still a change. A Datetime is kept with its time.
+    reply["siteVisitDate"] = "2026-11-21T05:30:00.000Z"
+    assert look()["Site_Visit_Date__c"] == "2026-11-21T05:30:00+00:00"
+
+    # Converted: the Opportunity and its stage come through; a left-out date keeps the one we have.
+    reply.update(siteVisitDate=None, opportunityId="006C1000000AAA01AA", opportunityStage="Visit Done", status="Qualified")
+    lead = look()
+    assert lead["Opportunity_Stage"] == "Visit Done" and lead["Opportunity_Id"] == "006C1000000AAA01AA"
+    assert lead["Site_Visit_Date__c"] == "2026-11-21T05:30:00+00:00"
+    assert len(LocalLeads().history(lead_id)) == 4

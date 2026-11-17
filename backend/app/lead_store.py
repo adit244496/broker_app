@@ -7,7 +7,7 @@ attribution all come from here when SALESFORCE_LEADS_ENDPOINT is set.
 """
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -94,15 +94,40 @@ def apply_salesforce_statuses(db: Session, leads: list[Record]) -> int:
     changed = 0
     for lead in leads:
         row = find(db, lead.get("leadId"), None)
-        status = (lead.get("status") or "").strip() or None
-        opportunity_id = (lead.get("opportunityId") or "").strip() or None
-        if not row or not status:
+        status = _text(lead.get("status"))
+        opportunity_id = _text(lead.get("opportunityId"))
+        # Sent once Salesforce adds them to the GET; left out = keep what we have.
+        visit = _visit_date(lead.get("siteVisitDate"))
+        stage = _text(lead.get("opportunityStage"))
+        if not row or not (status or row.status):
             continue
-        if row.status == status and (not opportunity_id or row.opportunity_id == opportunity_id):
+        if (
+            (not status or row.status == status)
+            and (not opportunity_id or row.opportunity_id == opportunity_id)
+            and (visit is None or row.site_visit_date == visit)
+            and (stage is None or row.opportunity_stage == stage)
+        ):
             continue
-        if record_status(db, row, status, None, "Salesforce", opportunity_id=opportunity_id):
+        if record_status(db, row, status, None, "Salesforce", visit, opportunity_id, stage):
             changed += 1
     return changed
+
+
+def _text(value) -> str | None:
+    return value.strip() or None if isinstance(value, str) else None
+
+
+def _visit_date(value) -> str | None:
+    """Salesforce's Date ("2026-11-20") or Datetime ("2026-11-20T05:30:00.000Z"), as the webhook stores it."""
+    value = _text(value)
+    if not value:
+        return None
+    try:
+        if len(value) == 10:
+            return date.fromisoformat(value).isoformat()
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).isoformat()
+    except ValueError:
+        return None
 
 
 def as_enquiry(row: LeadRecord) -> Record:
