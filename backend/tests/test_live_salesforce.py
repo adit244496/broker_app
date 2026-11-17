@@ -131,6 +131,15 @@ class FakeSalesforce:
             if not hit:
                 return httpx.Response(200, json={"success": False, "message": "Broker Account does not exist", "accountId": None, "accountName": None})
             return httpx.Response(200, json={"success": True, "message": "Broker Account exists", "accountId": hit["Id"], "accountName": hit["Name"]})
+        if request.method == "GET" and path == "/services/apexrest/v1/broker-app/leads":
+            q = parse_qs(urlparse(str(request.url)).query)
+            if not q.get("brokerAccountId"):
+                return httpx.Response(400, json={"success": False, "message": "brokerAccountId is required", "count": 0, "leads": []})
+            mine = [
+                {"leadId": l["Id"], "name": "Customer", "mobile": l["MobilePhone"], "status": l["Status"], "isConverted": False, "opportunityId": None}
+                for l in self.leads if l["Channel_Partner__c"] == q["brokerAccountId"][0]
+            ]
+            return httpx.Response(200, json={"success": True, "message": "Leads retrieved", "count": len(mine), "leads": mine})
         if request.method == "POST" and path == "/services/apexrest/v1/broker-app/leads":
             body = json.loads(request.content)
             self.lead_posts.append(body)
@@ -666,3 +675,22 @@ def test_existing_brokers_log_in_by_email_and_their_status_comes_from_the_list(f
     # The mobile check has no status; the list says this one is still waiting for approval.
     fake.accounts[1]["CP_Mobile__c"] = "9831198765"  # stored as clean digits, as the check matches exact text
     assert sf.find_partner_by_mobile("9831198765")["Partner_Status__c"] == "Pending Approval"
+
+
+def test_broker_lead_statuses_come_from_the_leads_endpoint(fake):
+    sf = live(fake, **LEADS)
+    leads = sf.broker_lead_statuses(PARTNER_ID)
+    assert [(l["leadId"], l["status"]) for l in leads] == [("00QC1000000AAA01AA", "Open - Not Contacted")]
+    assert parse_qs(urlparse(str(fake.requests[-1].url)).query)["brokerAccountId"] == [PARTNER_ID]
+    # Without the leads endpoint, leads are read from Salesforce directly: nothing to copy.
+    assert live(fake).broker_lead_statuses(PARTNER_ID) is None
+
+
+def test_broker_lead_statuses_report_salesforce_errors():
+    def handler(request):
+        if request.url.path.endswith("/oauth2/token"):
+            return httpx.Response(200, json={"access_token": "tok", "instance_url": "https://org.example.com"})
+        return httpx.Response(500, json={"success": False, "message": "Unable to retrieve leads: boom", "leads": []})
+
+    with pytest.raises(SalesforceError, match="Unable to retrieve leads"):
+        live(handler, **LEADS).broker_lead_statuses(PARTNER_ID)

@@ -1,7 +1,8 @@
 """
 Leads brokers submitted through the app, kept in our database (`leads`). Salesforce's leads API
-(POST /services/apexrest/v1/broker-app/leads) only creates leads: it can't list them, report status changes,
-or link a lead to the broker yet. So "my leads", the dashboards, the admin lead list and the broker
+(/services/apexrest/v1/broker-app/leads) creates leads (POST) and lists one broker's leads with their current
+status (GET ?brokerAccountId=), which we copy in whenever a broker looks at their leads; the lead-updated webhook
+also reports changes (with the site visit date and Opportunity stage) as they happen. So "my leads", the dashboards, the admin lead list and the broker
 attribution all come from here when SALESFORCE_LEADS_ENDPOINT is set.
 """
 
@@ -82,6 +83,26 @@ def record_status(
     row.last_changed_at = when
     row.updated_at = utcnow()
     return True
+
+
+def apply_salesforce_statuses(db: Session, leads: list[Record]) -> int:
+    """
+    The current Status (and converted Opportunity) Salesforce gave for a broker's leads, from the leads endpoint's
+    GET. Each lead whose status changed gets a history entry, as from the webhook. Returns how many changed.
+    Caller commits.
+    """
+    changed = 0
+    for lead in leads:
+        row = find(db, lead.get("leadId"), None)
+        status = (lead.get("status") or "").strip() or None
+        opportunity_id = (lead.get("opportunityId") or "").strip() or None
+        if not row or not status:
+            continue
+        if row.status == status and (not opportunity_id or row.opportunity_id == opportunity_id):
+            continue
+        if record_status(db, row, status, None, "Salesforce", opportunity_id=opportunity_id):
+            changed += 1
+    return changed
 
 
 def as_enquiry(row: LeadRecord) -> Record:

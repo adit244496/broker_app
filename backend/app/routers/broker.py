@@ -29,6 +29,27 @@ router = APIRouter(tags=["Broker"])
 log = logging.getLogger("broker_app.broker")
 
 
+# How often one broker's lead statuses are re-read from Salesforce (the app asks for leads on every screen).
+LEAD_REFRESH_SECONDS = 15
+_lead_refreshed: dict[str, float] = {}
+
+
+def _refresh_lead_statuses(db: Db, sf: Salesforce, partner_id: str) -> None:
+    """Copies the broker's current lead statuses from Salesforce into our leads. Failures only get logged."""
+    fetch = getattr(sf, "broker_lead_statuses", None)
+    now = time.monotonic()
+    if not fetch or now - _lead_refreshed.get(partner_id, float("-inf")) < LEAD_REFRESH_SECONDS:
+        return
+    _lead_refreshed[partner_id] = now
+    try:
+        leads = fetch(partner_id)
+    except SalesforceError as e:
+        log.warning("Lead statuses not refreshed for %s: %s", partner_id, e)
+        return
+    if leads and lead_store.apply_salesforce_statuses(db, leads):
+        db.commit()
+
+
 def _own_enquiry(sf: Salesforce, ctx: Broker, enquiry_id: str) -> Record:
     e = sf.get_enquiry(enquiry_id)
     # Another broker's enquiry looks the same as one that doesn't exist.
@@ -46,7 +67,8 @@ def me(ctx: Broker, db: Db, sf: Salesforce):
 
 
 @router.get("/dashboard/summary")
-def dashboard(ctx: Broker, sf: Salesforce):
+def dashboard(ctx: Broker, db: Db, sf: Salesforce):
+    _refresh_lead_statuses(db, sf, ctx.account_id)
     mine = sf.list_enquiries(partner_id=ctx.account_id)
     stats = broker_stats(mine)
     return {
@@ -62,13 +84,15 @@ def dashboard(ctx: Broker, sf: Salesforce):
 
 
 @router.get("/enquiries")
-def list_enquiries(ctx: Broker, sf: Salesforce, search: str | None = None):
+def list_enquiries(ctx: Broker, db: Db, sf: Salesforce, search: str | None = None):
+    _refresh_lead_statuses(db, sf, ctx.account_id)
     records = sf.list_enquiries(partner_id=ctx.account_id, search=search)
     return {"records": sorted(records, key=lambda e: e["CreatedDate"], reverse=True)}
 
 
 @router.get("/enquiries/{enquiry_id}")
-def get_enquiry(enquiry_id: str, ctx: Broker, sf: Salesforce):
+def get_enquiry(enquiry_id: str, ctx: Broker, db: Db, sf: Salesforce):
+    _refresh_lead_statuses(db, sf, ctx.account_id)
     return _own_enquiry(sf, ctx, enquiry_id)
 
 

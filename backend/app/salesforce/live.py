@@ -657,6 +657,25 @@ class LiveSalesforce:
             )
         ]
 
+    def broker_lead_statuses(self, partner_id: str) -> list[Record] | None:
+        """
+        Every lead linked to this broker with its current Salesforce Status, from the leads endpoint's GET
+        (?brokerAccountId=): [{"leadId", "status", "isConverted", "opportunityId", ...}]. None when the leads
+        endpoint isn't in use (leads are then read from Salesforce directly).
+        """
+        if not self._leads_endpoint:
+            return None
+        res = self._call("GET", self._leads_endpoint, params={"brokerAccountId": _require_id(partner_id)})
+        try:
+            data = res.json() if res.content else {}
+        except ValueError:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        if res.status_code >= 400 or data.get("success") is not True:
+            raise SalesforceError(f"Leads not read: {data.get('message') or res.status_code}")
+        return [lead for lead in data.get("leads") or [] if isinstance(lead, dict) and lead.get("leadId")]
+
     def get_enquiry(self, enquiry_id: str) -> Record | None:
         if self._leads_endpoint:
             return self.local_leads.get(_require_id(enquiry_id))

@@ -314,3 +314,42 @@ def test_lead_webhook_field_names_are_not_case_sensitive(client, mail):
     res = client.post("/webhooks/salesforce/lead-updated", content=b, headers=h)
     assert res.status_code == 200, res.text
     assert res.json()["status"] == "Working" and res.json()["opportunityStage"] is None
+
+
+def test_lead_statuses_are_refreshed_from_salesforce_when_the_broker_looks(client, mail, sf, monkeypatch):
+    from app.lead_store import LocalLeads
+    from app.routers import broker as broker_router
+    from app.salesforce.base import SalesforceError
+
+    broker = bearer(broker_token(client, mail, ABC_EMAIL))
+    lead_id = client.post("/enquiries", headers=broker, json={"fields": {**LEAD, "mobile": "9876506666"}}).json()["id"]
+    asked = []
+
+    def statuses(partner_id):
+        asked.append(partner_id)
+        return [{"leadId": lead_id, "status": "Contacted", "isConverted": False, "opportunityId": None},
+                {"leadId": "00QC1000000ZZZ99AA", "status": "Qualified"}]  # not from the app: ignored
+
+    monkeypatch.setattr(sf, "broker_lead_statuses", statuses, raising=False)
+    monkeypatch.setattr(broker_router, "_lead_refreshed", {})
+    assert client.get("/enquiries", headers=broker).status_code == 200
+    assert asked == ["001A1"]
+    assert LocalLeads().get(lead_id)["Status"] == "Contacted"
+    assert [h["NewValue"] for h in LocalLeads().history(lead_id)] == ["New", "Contacted"]
+
+    # Asked again within the refresh window: Salesforce isn't called again.
+    client.get("/dashboard/summary", headers=broker)
+    assert len(asked) == 1
+
+    # The same status again adds no history; a Salesforce error leaves the leads as they were.
+    monkeypatch.setattr(broker_router, "_lead_refreshed", {})
+    client.get("/enquiries", headers=broker)
+    assert [h["NewValue"] for h in LocalLeads().history(lead_id)] == ["New", "Contacted"]
+
+    def down(partner_id):
+        raise SalesforceError("Leads not read: 500")
+
+    monkeypatch.setattr(sf, "broker_lead_statuses", down, raising=False)
+    monkeypatch.setattr(broker_router, "_lead_refreshed", {})
+    assert client.get("/enquiries", headers=broker).status_code == 200
+    assert LocalLeads().get(lead_id)["Status"] == "Contacted"
