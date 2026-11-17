@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     # Development only: also write each login code to the server log, even when it's emailed.
     # Ignored when ENVIRONMENT=production.
     log_login_codes: bool = False
+    # TEMPORARY, for testing before SMS/WhatsApp is set up: while no SMS account is configured, write mobile
+    # login codes to the server log instead of refusing (works in production too). Anyone who can read the
+    # log can log in as any broker, so turn it off as soon as SMS or WhatsApp works.
+    test_login_codes_in_log: bool = False
     otp_max_attempts: int = 5
     otp_resend_seconds: int = 30
     # Codes sent to one mobile or email per hour. Caps SMS spend if someone keeps requesting codes.

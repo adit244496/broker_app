@@ -76,8 +76,11 @@ def get_sms(db: Db) -> SmsSender:
     config, _, _ = active(db)
     if config:
         return GupshupSms(config)
-    # Development without Gupshup: print codes in the log. Production: refuse to send.
-    return ConsoleSms() if get_settings().environment == "development" else UnconfiguredSms()
+    # Development without Gupshup (or the temporary testing switch): print codes in the log. Production: refuse.
+    settings = get_settings()
+    if settings.environment == "development" or settings.test_login_codes_in_log:
+        return ConsoleSms()
+    return UnconfiguredSms()
 
 
 def login_code_text(db: Session, code: str) -> str:

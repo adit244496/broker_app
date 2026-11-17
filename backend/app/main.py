@@ -28,6 +28,11 @@ async def lifespan(_: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    if settings.test_login_codes_in_log:
+        logging.getLogger("broker_app").warning(
+            "TEST_LOGIN_CODES_IN_LOG is on: mobile login codes are written to this log while SMS isn't set up. "
+            "Turn it off before real brokers use the app."
+        )
     app = FastAPI(
         title="Ambuja Neotia Partner API",
         description="Backend for the Channel Partner mobile app and the admin portal. Talks to Salesforce.",

@@ -48,6 +48,16 @@ def test_production_without_an_account_refuses_to_send(client, monkeypatch):
         assert isinstance(get_sms(db), UnconfiguredSms)
 
 
+def test_temporary_switch_logs_codes_in_production(client, monkeypatch, caplog):
+    monkeypatch.setattr(get_settings(), "environment", "production")
+    monkeypatch.setattr(get_settings(), "test_login_codes_in_log", True)
+    with SessionLocal() as db:
+        sms = get_sms(db)
+        assert isinstance(sms, ConsoleSms)
+        sms.send("9830012345", login_code_text(db, "482913"))
+    assert "482913" in caplog.text
+
+
 def test_save_account_and_never_return_the_password(client):
     admin = bearer(admin_token(client))
     assert client.put("/admin/settings/sms", json={**GUPSHUP, "password": ""}, headers=admin).status_code == 422
