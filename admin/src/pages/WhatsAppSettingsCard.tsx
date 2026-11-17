@@ -165,14 +165,16 @@ function WhatsAppForm({ initial }: { initial: WhatsAppSettings }) {
         <label className="settings-check">
           <input type="checkbox" checked={codeInButton} onChange={(e) => edit(setCodeInButton)(e.target.checked)} />
           <span>
-            The template has a <strong>Copy code</strong> button
+            <span>
+              The template has a <strong>Copy code</strong> button
+            </span>
             <small>Meta’s standard Authentication template has one. Untick only if yours has no button.</small>
           </span>
         </label>
         <label className="settings-check">
           <input type="checkbox" checked={enabled} onChange={(e) => edit(setEnabled)(e.target.checked)} />
           <span>
-            Send mobile login codes on WhatsApp
+            <span>Send mobile login codes on WhatsApp</span>
             <small>Brokers then get their code on WhatsApp instead of SMS. Email codes are not affected.</small>
           </span>
         </label>
