@@ -5,7 +5,7 @@ import { enquiryApi } from '@/api/services';
 import { Card, ErrorState, InfoRow, Loading, SectionTitle, StatusBadge } from '@/components/ui';
 import { useAsync } from '@/hooks/useAsync';
 import { colors, spacing, statusColors } from '@/theme';
-import { CLOSED_STATUSES, type EnquiryStatus } from '@/types/models';
+import { CLOSED_STATUSES, isConverted, type EnquiryStatus } from '@/types/models';
 import { formatDate } from '@/utils/format';
 import { visitStage } from '@/utils/visits';
 
@@ -31,8 +31,16 @@ export default function EnquiryDetailScreen() {
   if (data.error || !data.data) return <ErrorState message={data.error ?? ''} onRetry={data.reload} />;
   const [e, history] = data.data;
   // "Visit done" once the site visit date has passed (Salesforce has no status for it).
-  const currentStage = visitStage(e) === 'done' && e.status === 'Visit confirmed' ? 3 : (STAGE_OF[e.status] ?? 0);
-  const closed = CLOSED_STATUSES.includes(e.status);
+  const converted = isConverted(e);
+  // Converted into an Opportunity = qualified, whatever the Lead Status still says.
+  const currentStage = converted
+    ? STAGES.length - 1
+    : visitStage(e) === 'done' && e.status === 'Visit confirmed'
+      ? 3
+      : (STAGE_OF[e.status] ?? 0);
+  const closed = !converted && CLOSED_STATUSES.includes(e.status);
+  // The history entry where the Opportunity first appears: the conversion.
+  const convertedAt = history.findIndex((h) => !!h.stage);
   const closedColor = (statusColors[e.status] ?? statusColors.Unqualified).fg;
 
   return (
@@ -49,7 +57,6 @@ export default function EnquiryDetailScreen() {
           </Text>
           <StatusBadge status={e.status} />
         </View>
-        {e.opportunityStage ? <Text style={styles.stage}>Opportunity: {e.opportunityStage}</Text> : null}
         <Text style={styles.sub}>Last updated {formatDate(e.lastModifiedDate ?? e.createdDate, true)}</Text>
 
         {closed ? (
@@ -74,6 +81,18 @@ export default function EnquiryDetailScreen() {
         )}
       </Card>
 
+      {converted ? (
+        <View style={styles.oppBanner}>
+          <Ionicons name="trophy" size={22} color={colors.white} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.oppTitle}>Converted to Opportunity</Text>
+            <Text style={styles.oppText}>
+              {e.opportunityStage ? `Stage: ${e.opportunityStage}` : 'Salesforce is now tracking this customer as an opportunity.'}
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
       <SectionTitle>Status history</SectionTitle>
       <Card>
         {history.map((h, i) => {
@@ -90,6 +109,7 @@ export default function EnquiryDetailScreen() {
                   {h.status}
                   {h.stage ? ` · ${h.stage}` : ''}
                 </Text>
+                {i === convertedAt ? <Text style={styles.tlConverted}>Converted to Opportunity</Text> : null}
                 <Text style={styles.tlMeta}>
                   {formatDate(h.date, true)}
                   {h.by ? ` · ${h.by}` : ''}
@@ -129,7 +149,18 @@ const styles = StyleSheet.create({
   trackStep: { flex: 1 },
   trackBar: { height: 5, borderRadius: 3 },
   trackLabel: { fontSize: 9.5, color: colors.textMuted, marginTop: 6 },
-  stage: { color: colors.primary, fontWeight: '700', fontSize: 13, marginTop: 4 },
+  oppBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginTop: spacing.md,
+    padding: spacing.lg,
+    borderRadius: 16,
+    backgroundColor: colors.success,
+  },
+  oppTitle: { color: colors.white, fontSize: 16, fontWeight: '800' },
+  oppText: { color: colors.white, fontSize: 13, marginTop: 2, opacity: 0.95 },
+  tlConverted: { color: colors.success, fontWeight: '700', fontSize: 12.5, marginTop: 2 },
   lost: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.lg },
   tlRow: { flexDirection: 'row', gap: spacing.md },
   tlRail: { alignItems: 'center', width: 14 },

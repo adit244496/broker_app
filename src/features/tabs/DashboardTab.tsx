@@ -3,11 +3,11 @@ import { useRouter } from 'expo-router';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { dashboardApi } from '@/api/services';
 import { useAuth } from '@/auth/AuthContext';
-import { BrandLogo, Button, Card, ErrorState, Loading, SectionTitle, StatusBadge } from '@/components/ui';
+import { BrandLogo, Button, Card, ErrorState, Loading, OpportunityBadge, SectionTitle, StatusBadge } from '@/components/ui';
 import { useAsync } from '@/hooks/useAsync';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { colors, spacing, statusColors, TAB_BAR_HEIGHT } from '@/theme';
-import { CLOSED_STATUSES } from '@/types/models';
+import { CLOSED_STATUSES, isConverted } from '@/types/models';
 import { formatDate } from '@/utils/format';
 
 export function DashboardTab() {
@@ -88,6 +88,11 @@ export function DashboardTab() {
                 <Text style={styles.recentMeta}>
                   {e.projectName} · {formatDate(e.createdDate)}
                 </Text>
+                {isConverted(e) ? (
+                  <View style={{ marginTop: 6 }}>
+                    <OpportunityBadge stage={e.opportunityStage} />
+                  </View>
+                ) : null}
               </View>
               <StatusBadge status={e.status} />
             </View>

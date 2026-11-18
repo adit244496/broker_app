@@ -100,6 +100,7 @@ export const enquiryFromSf = (r: SfRecord): Enquiry => ({
   budget: r.Budget__c,
   preferredVisitDate: r.Preferred_Site_Visit_Date__c,
   siteVisitDate: r.Site_Visit_Date__c ?? undefined,
+  opportunityId: r.Opportunity_Id ?? undefined,
   opportunityStage: r.Opportunity_Stage ?? undefined,
   remarks: r.Remarks__c,
   brokerId: r.Channel_Partner__c,

@@ -98,6 +98,18 @@ export function StatusBadge({ status }: { status: EnquiryStatus }) {
   );
 }
 
+/** Marks a lead Salesforce has converted into an Opportunity. */
+export function OpportunityBadge({ stage }: { stage?: string }) {
+  return (
+    <View style={[s.badge, s.oppBadge]}>
+      <Ionicons name="trophy" size={12} color={colors.white} />
+      <Text style={[s.badgeText, { color: colors.white }]} numberOfLines={1}>
+        Opportunity{stage ? ` · ${stage}` : ''}
+      </Text>
+    </View>
+  );
+}
+
 export function Pill({ text, color = colors.textMuted, bg = colors.bg }: { text: string; color?: string; bg?: string }) {
   return (
     <View style={[s.badge, { backgroundColor: bg }]}>
@@ -260,6 +272,7 @@ export const s = StyleSheet.create({
   buttonText: { fontSize: 15, fontWeight: '700' },
   badge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   badgeText: { fontSize: 11.5, fontWeight: '700' },
+  oppBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.success, maxWidth: '100%' },
   search: {
     flexDirection: 'row',
     alignItems: 'center',

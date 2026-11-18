@@ -3,25 +3,34 @@ import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { enquiryApi } from '@/api/services';
-import { Button, Card, EmptyState, ErrorState, Loading, PageHeader, SearchBar, StatusBadge } from '@/components/ui';
+import { Button, Card, EmptyState, ErrorState, Loading, OpportunityBadge, PageHeader, SearchBar, StatusBadge } from '@/components/ui';
 import { useAsync } from '@/hooks/useAsync';
 import { useDebounced } from '@/hooks/useDebounced';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { colors, spacing, TAB_BAR_HEIGHT } from '@/theme';
-import { ENQUIRY_STATUSES, type EnquiryStatus } from '@/types/models';
+import { ENQUIRY_STATUSES, isConverted, type Enquiry, type EnquiryStatus } from '@/types/models';
 import { formatDate } from '@/utils/format';
+
+type Filter = EnquiryStatus | 'All' | 'Opportunity';
+const FILTERS: readonly Filter[] = ['All', 'Opportunity', ...ENQUIRY_STATUSES];
+
+function matches(e: Enquiry, f: Filter) {
+  if (f === 'All') return true;
+  if (f === 'Opportunity') return isConverted(e);
+  return e.status === f;
+}
 
 export function EnquiriesTab() {
   const router = useRouter();
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<EnquiryStatus | 'All'>('All');
+  const [filter, setFilter] = useState<Filter>('All');
   const q = useDebounced(search);
   const enquiries = useAsync(() => enquiryApi.list(q), [q]);
 
   useRefreshOnFocus(enquiries.silentReload);
 
   const visible = useMemo(
-    () => (filter === 'All' ? enquiries.data : enquiries.data?.filter((e) => e.status === filter)),
+    () => (filter === 'All' ? enquiries.data : enquiries.data?.filter((e) => matches(e, filter))),
     [enquiries.data, filter],
   );
 
@@ -36,9 +45,9 @@ export function EnquiriesTab() {
 
       <View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-          {(['All', ...ENQUIRY_STATUSES] as const).map((st) => {
+          {FILTERS.map((st) => {
             const active = st === filter;
-            const count = st === 'All' ? enquiries.data?.length : enquiries.data?.filter((e) => e.status === st).length;
+            const count = enquiries.data?.filter((e) => matches(e, st)).length;
             return (
               <Pressable key={st} onPress={() => setFilter(st)} style={[styles.filter, active && styles.filterActive]}>
                 <Text style={[styles.filterText, active && { color: colors.white }]}>
@@ -69,7 +78,10 @@ export function EnquiriesTab() {
             />
           }
           renderItem={({ item: e }) => (
-            <Card onPress={() => router.push({ pathname: '/enquiries/[id]', params: { id: e.id } })}>
+            <Card
+              onPress={() => router.push({ pathname: '/enquiries/[id]', params: { id: e.id } })}
+              style={isConverted(e) ? styles.converted : undefined}
+            >
               <View style={styles.top}>
                 <Text style={styles.number}>{e.enquiryNumber}</Text>
                 <StatusBadge status={e.status} />
@@ -77,6 +89,11 @@ export function EnquiriesTab() {
               <Text style={styles.name}>
                 {e.firstName} {e.lastName}
               </Text>
+              {isConverted(e) ? (
+                <View style={{ marginTop: 6 }}>
+                  <OpportunityBadge stage={e.opportunityStage} />
+                </View>
+              ) : null}
               <View style={styles.metaRow}>
                 <Meta icon="business-outline" text={e.projectName ?? '—'} />
                 <Meta icon="call-outline" text={e.mobile} />
@@ -110,6 +127,7 @@ const styles = StyleSheet.create({
   filterActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   filterText: { fontSize: 12.5, fontWeight: '600', color: colors.text },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  converted: { borderLeftWidth: 4, borderLeftColor: colors.success },
   number: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
   name: { fontSize: 16, fontWeight: '700', color: colors.text, marginTop: spacing.sm },
   metaRow: { flexDirection: 'row', gap: spacing.md, marginTop: 6 },

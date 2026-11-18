@@ -47,6 +47,9 @@ export const ENQUIRY_STATUSES = [
 ] as const;
 export type EnquiryStatus = (typeof ENQUIRY_STATUSES)[number];
 /** Closed without being qualified (shown as closed, not on the progress tracker). */
+/** The lead has been converted into a Salesforce Opportunity. */
+export const isConverted = (e: Pick<Enquiry, 'opportunityId' | 'opportunityStage'>): boolean => !!(e.opportunityId || e.opportunityStage);
+
 export const CLOSED_STATUSES: readonly EnquiryStatus[] = ['Unqualified', 'DND', 'No action needed'];
 /** Visit confirmed or further: counted as site visits. */
 export const SITE_VISIT_STATUSES: readonly EnquiryStatus[] = ['Visit confirmed', 'Qualified'];
@@ -76,6 +79,8 @@ export interface Enquiry {
   preferredVisitDate?: string;
   /** The site visit Salesforce scheduled (date, or date and time), synced with the lead status. */
   siteVisitDate?: string;
+  /** Set once Salesforce converts the lead into an Opportunity. */
+  opportunityId?: string;
   /** Once the lead is converted: the Opportunity's Stage (Visit Done, Booked, ...), a separate picklist. */
   opportunityStage?: string;
   remarks?: string;
