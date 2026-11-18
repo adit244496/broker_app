@@ -674,7 +674,39 @@ class LiveSalesforce:
             data = {}
         if res.status_code >= 400 or data.get("success") is not True:
             raise SalesforceError(f"Leads not read: {data.get('message') or res.status_code}")
-        return [lead for lead in data.get("leads") or [] if isinstance(lead, dict) and lead.get("leadId")]
+        leads = [lead for lead in data.get("leads") or [] if isinstance(lead, dict) and lead.get("leadId")]
+        # Converted leads: their Opportunity's Stage, from the opportunities endpoint (by Opportunity Id).
+        if any(lead.get("opportunityId") and not lead.get("opportunityStage") for lead in leads):
+            try:
+                stages = self.broker_opportunity_stages(partner_id)
+            except SalesforceError as e:
+                log.warning("Opportunity stages not read for %s: %s", partner_id, e)
+                stages = None
+            for lead in leads:
+                stage = (stages or {}).get(lead.get("opportunityId") or "")
+                if stage and not lead.get("opportunityStage"):
+                    lead["opportunityStage"] = stage
+        return leads
+
+    def broker_opportunity_stages(self, partner_id: str) -> dict[str, str] | None:
+        """{Opportunity Id: StageName} for this broker's Opportunities. None when the endpoint isn't set."""
+        endpoint = self._s.salesforce_opportunities_endpoint
+        if not endpoint:
+            return None
+        res = self._call("GET", endpoint, params={"channelPartnerAccountId": _require_id(partner_id)})
+        try:
+            data = res.json() if res.content else {}
+        except ValueError:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        if res.status_code >= 400 or data.get("success") is not True:
+            raise SalesforceError(f"Opportunities not read: {data.get('message') or res.status_code}")
+        return {
+            str(o["id"]): str(o["stageName"]).strip()
+            for o in data.get("opportunities") or []
+            if isinstance(o, dict) and o.get("id") and isinstance(o.get("stageName"), str) and o["stageName"].strip()
+        }
 
     def get_enquiry(self, enquiry_id: str) -> Record | None:
         if self._leads_endpoint:

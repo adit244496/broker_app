@@ -112,6 +112,9 @@ class Settings(BaseSettings):
     # Salesforce's Apex endpoint that creates leads (spec 7 Nov 2026). Set = leads are created there and listed
     # from our own copy (app/lead_store.py), since the endpoint can't list them; empty = the Lead object above.
     salesforce_leads_endpoint: str = "/services/apexrest/v1/broker-app/leads"
+    # Salesforce's Apex endpoint listing a broker's Opportunities (?channelPartnerAccountId=) with their Stage.
+    # Converted leads get their Opportunity stage from it; empty = not used.
+    salesforce_opportunities_endpoint: str = "/services/apexrest/v1/broker-app/opportunities"
     # Sent as `company` (required by Salesforce) when the lead form has no company field.
     salesforce_lead_company: str = "Individual Buyer"
     # JSON key the leads endpoint takes the submitting broker's Salesforce Account Id under (saved to

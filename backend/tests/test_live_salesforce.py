@@ -112,6 +112,11 @@ class FakeSalesforce:
              "approvalStatus": "Approved"},
         ]
         self.existing_lead_mobiles = {"9830099999"}
+        self.opportunities = [
+            {"id": "006C1000000AAA01AA", "stageName": "Visit Done", "name": "Customer - Utpalaa", "channelPartnerAccountId": PARTNER_ID},
+            {"id": "006C1000000AAA02AA", "stageName": "Booked", "name": "Someone else", "channelPartnerAccountId": OTHER_PARTNER_ID},
+        ]
+        self.opportunities_error: str | None = None
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -136,10 +141,20 @@ class FakeSalesforce:
             if not q.get("brokerAccountId"):
                 return httpx.Response(400, json={"success": False, "message": "brokerAccountId is required", "count": 0, "leads": []})
             mine = [
-                {"leadId": l["Id"], "name": "Customer", "mobile": l["MobilePhone"], "status": l["Status"], "isConverted": False, "opportunityId": None}
+                {"leadId": l["Id"], "name": "Customer", "mobile": l["MobilePhone"], "status": l["Status"],
+                 "isConverted": bool(l.get("_opportunity")), "opportunityId": l.get("_opportunity")}
                 for l in self.leads if l["Channel_Partner__c"] == q["brokerAccountId"][0]
             ]
             return httpx.Response(200, json={"success": True, "message": "Leads retrieved", "count": len(mine), "leads": mine})
+        if request.method == "GET" and path == "/services/apexrest/v1/broker-app/opportunities":
+            q = parse_qs(urlparse(str(request.url)).query)
+            if self.opportunities_error:
+                return httpx.Response(500, json={"success": False, "message": self.opportunities_error, "opportunities": None})
+            if not q.get("channelPartnerAccountId"):
+                return httpx.Response(400, json={"success": False, "message": "Channel Partner Account Id is required"})
+            opps = [o for o in self.opportunities if o["channelPartnerAccountId"] == q["channelPartnerAccountId"][0]]
+            return httpx.Response(200, json={"success": True, "message": "Opportunities fetched successfully",
+                                             "totalRecords": len(opps), "opportunities": opps})
         if request.method == "POST" and path == "/services/apexrest/v1/broker-app/leads":
             body = json.loads(request.content)
             self.lead_posts.append(body)
@@ -695,3 +710,24 @@ def test_broker_lead_statuses_report_salesforce_errors():
 
     with pytest.raises(SalesforceError, match="Unable to retrieve leads"):
         live(handler, **LEADS).broker_lead_statuses(PARTNER_ID)
+
+
+def test_converted_leads_get_their_opportunity_stage(fake):
+    fake.leads[0]["_opportunity"] = "006C1000000AAA01AA"
+    sf = live(fake, **LEADS)
+    [lead] = sf.broker_lead_statuses(PARTNER_ID)
+    assert lead["opportunityId"] == "006C1000000AAA01AA" and lead["opportunityStage"] == "Visit Done"
+    opp_calls = [r for r in fake.requests if r.url.path.endswith("/broker-app/opportunities")]
+    assert parse_qs(urlparse(str(opp_calls[-1].url)).query)["channelPartnerAccountId"] == [PARTNER_ID]
+
+
+def test_no_converted_leads_means_no_opportunities_call(fake):
+    live(fake, **LEADS).broker_lead_statuses(PARTNER_ID)
+    assert not any(r.url.path.endswith("/broker-app/opportunities") for r in fake.requests)
+
+
+def test_opportunities_endpoint_down_still_returns_the_leads(fake):
+    fake.leads[0]["_opportunity"] = "006C1000000AAA01AA"
+    fake.opportunities_error = "Unable to retrieve Opportunities: boom"
+    [lead] = live(fake, **LEADS).broker_lead_statuses(PARTNER_ID)
+    assert lead["opportunityId"] == "006C1000000AAA01AA" and "opportunityStage" not in lead
