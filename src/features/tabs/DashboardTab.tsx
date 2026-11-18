@@ -3,11 +3,12 @@ import { useRouter } from 'expo-router';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { dashboardApi } from '@/api/services';
 import { useAuth } from '@/auth/AuthContext';
-import { BrandLogo, Button, Card, ErrorState, Loading, OpportunityBadge, SectionTitle, StatusBadge } from '@/components/ui';
+import { BrandLogo, Button, Card, ErrorState, Loading, OpportunityBadge, SectionTitle, StageBadge } from '@/components/ui';
 import { useAsync } from '@/hooks/useAsync';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
-import { colors, spacing, statusColors, TAB_BAR_HEIGHT } from '@/theme';
+import { colors, spacing, TAB_BAR_HEIGHT } from '@/theme';
 import { CLOSED_STATUSES, isConverted } from '@/types/models';
+import { brokerStage, LEAD_STAGES, leadStatusStage, STAGE_COLORS, type BrokerStage } from '@/utils/brokerStage';
 import { formatDate } from '@/utils/format';
 
 export function DashboardTab() {
@@ -20,7 +21,14 @@ export function DashboardTab() {
   if (summary.loading && !summary.data) return <Loading />;
   if (summary.error && !summary.data) return <ErrorState message={summary.error} onRetry={summary.reload} />;
   const d = summary.data!;
-  const maxCount = Math.max(1, ...d.pipeline.map((p) => p.count));
+  // The pipeline in the same few stages brokers see on their leads, not every Salesforce status.
+  const byStage = new Map<BrokerStage, number>();
+  for (const p of d.pipeline) {
+    const stage = leadStatusStage(p.status);
+    byStage.set(stage, (byStage.get(stage) ?? 0) + p.count);
+  }
+  const pipeline = LEAD_STAGES.filter((s) => byStage.has(s)).map((stage) => ({ stage, count: byStage.get(stage) ?? 0 }));
+  const maxCount = Math.max(1, ...pipeline.map((p) => p.count));
 
   // Qualified (Salesforce's converted status) and closed leads aren't open.
   const closedOnly = d.pipeline.filter((p) => CLOSED_STATUSES.includes(p.status)).reduce((n, p) => n + p.count, 0);
@@ -63,13 +71,11 @@ export function DashboardTab() {
 
       <SectionTitle>Lead pipeline</SectionTitle>
       <Card>
-        {d.pipeline.map((p) => (
-          <View key={p.status} style={styles.pipeRow}>
-            <Text style={styles.pipeLabel}>{p.status}</Text>
+        {pipeline.map((p) => (
+          <View key={p.stage} style={styles.pipeRow}>
+            <Text style={styles.pipeLabel}>{p.stage}</Text>
             <View style={styles.pipeTrack}>
-              <View
-                style={[styles.pipeFill, { width: `${(p.count / maxCount) * 100}%`, backgroundColor: (statusColors[p.status] ?? statusColors.New).fg }]}
-              />
+              <View style={[styles.pipeFill, { width: `${(p.count / maxCount) * 100}%`, backgroundColor: STAGE_COLORS[p.stage].fg }]} />
             </View>
             <Text style={styles.pipeCount}>{p.count}</Text>
           </View>
@@ -90,11 +96,11 @@ export function DashboardTab() {
                 </Text>
                 {isConverted(e) ? (
                   <View style={{ marginTop: 6 }}>
-                    <OpportunityBadge stage={e.opportunityStage} />
+                    <OpportunityBadge />
                   </View>
                 ) : null}
               </View>
-              <StatusBadge status={e.status} />
+              <StageBadge stage={brokerStage(e)} />
             </View>
           </Card>
         ))}
@@ -113,7 +119,7 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 13, color: colors.textMuted },
   actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },
   pipeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
-  pipeLabel: { width: 130, fontSize: 12.5, color: colors.text },
+  pipeLabel: { width: 100, fontSize: 12.5, color: colors.text },
   pipeTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.bg, overflow: 'hidden' },
   pipeFill: { height: 8, borderRadius: 4 },
   pipeCount: { width: 28, textAlign: 'right', fontSize: 13, fontWeight: '700', color: colors.text },

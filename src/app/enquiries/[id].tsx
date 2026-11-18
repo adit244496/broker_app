@@ -2,10 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { enquiryApi } from '@/api/services';
-import { Card, ErrorState, InfoRow, Loading, SectionTitle, StatusBadge } from '@/components/ui';
+import { Card, ErrorState, InfoRow, Loading, SectionTitle, StageBadge } from '@/components/ui';
 import { useAsync } from '@/hooks/useAsync';
-import { colors, spacing, statusColors } from '@/theme';
+import { colors, spacing } from '@/theme';
 import { CLOSED_STATUSES, isConverted, type EnquiryStatus } from '@/types/models';
+import { brokerStage, STAGE_COLORS, stageHistory } from '@/utils/brokerStage';
 import { formatDate } from '@/utils/format';
 import { visitStage } from '@/utils/visits';
 
@@ -39,9 +40,9 @@ export default function EnquiryDetailScreen() {
       ? 3
       : (STAGE_OF[e.status] ?? 0);
   const closed = !converted && CLOSED_STATUSES.includes(e.status);
-  // The history entry where the Opportunity first appears: the conversion.
-  const convertedAt = history.findIndex((h) => !!h.stage);
-  const closedColor = (statusColors[e.status] ?? statusColors.Unqualified).fg;
+  // Each simple stage once, when the lead got there (not every Salesforce status change).
+  const steps = stageHistory(history);
+  const stage = brokerStage(e);
 
   return (
     <ScrollView
@@ -55,14 +56,14 @@ export default function EnquiryDetailScreen() {
           <Text style={styles.name}>
             {e.firstName} {e.lastName}
           </Text>
-          <StatusBadge status={e.status} />
+          <StageBadge stage={stage} />
         </View>
         <Text style={styles.sub}>Last updated {formatDate(e.lastModifiedDate ?? e.createdDate, true)}</Text>
 
         {closed ? (
           <View style={styles.lost}>
-            <Ionicons name="close-circle" size={18} color={closedColor} />
-            <Text style={{ color: closedColor, fontWeight: '600' }}>This lead was closed: {e.status}</Text>
+            <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+            <Text style={{ color: colors.textMuted, fontWeight: '600' }}>This lead was closed.</Text>
           </View>
         ) : (
           <View style={styles.tracker}>
@@ -93,27 +94,20 @@ export default function EnquiryDetailScreen() {
         </View>
       ) : null}
 
-      <SectionTitle>Status history</SectionTitle>
+      <SectionTitle>Progress</SectionTitle>
       <Card>
-        {history.map((h, i) => {
-          const c = statusColors[h.status] ?? { fg: colors.textMuted, bg: colors.border };
-          const last = i === history.length - 1;
+        {steps.map((h, i) => {
+          const last = i === steps.length - 1;
           return (
-            <View key={`${h.status}-${h.date}`} style={styles.tlRow}>
+            <View key={`${h.stage}-${h.date}`} style={styles.tlRow}>
               <View style={styles.tlRail}>
-                <View style={[styles.tlDot, { backgroundColor: c.fg }]} />
+                <View style={[styles.tlDot, { backgroundColor: STAGE_COLORS[h.stage].fg }]} />
                 {!last ? <View style={styles.tlLine} /> : null}
               </View>
               <View style={{ flex: 1, paddingBottom: last ? 0 : spacing.lg }}>
-                <Text style={styles.tlStatus}>
-                  {h.status}
-                  {h.stage ? ` · ${h.stage}` : ''}
-                </Text>
-                {i === convertedAt ? <Text style={styles.tlConverted}>Converted to Opportunity</Text> : null}
-                <Text style={styles.tlMeta}>
-                  {formatDate(h.date, true)}
-                  {h.by ? ` · ${h.by}` : ''}
-                </Text>
+                <Text style={styles.tlStatus}>{h.stage}</Text>
+                {h.converted ? <Text style={styles.tlConverted}>Converted to Opportunity</Text> : null}
+                <Text style={styles.tlMeta}>{formatDate(h.date, true)}</Text>
                 {h.note ? <Text style={styles.tlNote}>{h.note}</Text> : null}
               </View>
             </View>

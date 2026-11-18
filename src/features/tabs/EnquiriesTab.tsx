@@ -3,51 +3,88 @@ import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { enquiryApi } from '@/api/services';
-import { Button, Card, EmptyState, ErrorState, Loading, OpportunityBadge, PageHeader, SearchBar, StatusBadge } from '@/components/ui';
+import { Button, Card, EmptyState, ErrorState, Loading, PageHeader, SearchBar, StageBadge } from '@/components/ui';
 import { useAsync } from '@/hooks/useAsync';
 import { useDebounced } from '@/hooks/useDebounced';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
-import { colors, spacing, TAB_BAR_HEIGHT } from '@/theme';
-import { ENQUIRY_STATUSES, isConverted, type Enquiry, type EnquiryStatus } from '@/types/models';
+import { colors, radius, spacing, TAB_BAR_HEIGHT } from '@/theme';
+import { isConverted } from '@/types/models';
+import { brokerStage, LEAD_STAGES, OPPORTUNITY_STAGES, type BrokerStage } from '@/utils/brokerStage';
 import { formatDate } from '@/utils/format';
 
-type Filter = EnquiryStatus | 'All' | 'Opportunity';
-const FILTERS: readonly Filter[] = ['All', 'Opportunity', ...ENQUIRY_STATUSES];
-
-function matches(e: Enquiry, f: Filter) {
-  if (f === 'All') return true;
-  if (f === 'Opportunity') return isConverted(e);
-  return e.status === f;
-}
+type View_ = 'leads' | 'opportunities';
+type Filter = BrokerStage | 'All';
 
 export function EnquiriesTab() {
   const router = useRouter();
   const [search, setSearch] = useState('');
+  // Leads still being worked on, or leads Salesforce has converted into Opportunities.
+  const [view, setView] = useState<View_>('leads');
   const [filter, setFilter] = useState<Filter>('All');
   const q = useDebounced(search);
   const enquiries = useAsync(() => enquiryApi.list(q), [q]);
 
   useRefreshOnFocus(enquiries.silentReload);
 
+  const leads = useMemo(() => enquiries.data?.filter((e) => !isConverted(e)), [enquiries.data]);
+  const opportunities = useMemo(() => enquiries.data?.filter(isConverted), [enquiries.data]);
+  const inView = view === 'leads' ? leads : opportunities;
   const visible = useMemo(
-    () => (filter === 'All' ? enquiries.data : enquiries.data?.filter((e) => matches(e, filter))),
-    [enquiries.data, filter],
+    () => (filter === 'All' ? inView : inView?.filter((e) => brokerStage(e) === filter)),
+    [inView, filter],
   );
+
+  // Only the stages something is in, so the chips stay short.
+  const stages = (view === 'leads' ? LEAD_STAGES : OPPORTUNITY_STAGES) as readonly BrokerStage[];
+  const counts = new Map<BrokerStage, number>();
+  for (const e of inView ?? []) counts.set(brokerStage(e), (counts.get(brokerStage(e)) ?? 0) + 1);
+  const chips: Filter[] = ['All', ...stages.filter((s) => counts.get(s) || s === filter)];
+
+  const switchTo = (v: View_) => {
+    setView(v);
+    setFilter('All');
+  };
 
   return (
     <View style={{ flex: 1 }}>
       <PageHeader
-        title="Leads"
-        subtitle={enquiries.data ? `${enquiries.data.length} total` : undefined}
+        title={view === 'leads' ? 'Leads' : 'Opportunities'}
+        subtitle={inView ? `${inView.length} total` : undefined}
         right={<Button title="Create" icon="add" onPress={() => router.push('/enquiries/new')} style={{ height: 40 }} />}
       />
+
+      <View style={styles.toggle}>
+        {(
+          [
+            ['leads', 'Leads', leads?.length],
+            ['opportunities', 'Opportunities', opportunities?.length],
+          ] as const
+        ).map(([key, label, count]) => {
+          const active = view === key;
+          return (
+            <Pressable
+              key={key}
+              onPress={() => switchTo(key)}
+              style={[styles.toggleItem, active && styles.toggleActive]}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+            >
+              <Text style={[styles.toggleText, active && styles.toggleTextActive]}>
+                {label}
+                {count !== undefined ? ` (${count})` : ''}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
       <SearchBar value={search} onChangeText={setSearch} placeholder="Search by customer, mobile or ID" />
 
       <View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-          {FILTERS.map((st) => {
+          {chips.map((st) => {
             const active = st === filter;
-            const count = enquiries.data?.filter((e) => matches(e, st)).length;
+            const count = st === 'All' ? inView?.length : (counts.get(st) ?? 0);
             return (
               <Pressable key={st} onPress={() => setFilter(st)} style={[styles.filter, active && styles.filterActive]}>
                 <Text style={[styles.filterText, active && { color: colors.white }]}>
@@ -71,29 +108,32 @@ export function EnquiriesTab() {
           contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: TAB_BAR_HEIGHT + 48, gap: spacing.md }}
           refreshControl={<RefreshControl refreshing={enquiries.refreshing} onRefresh={enquiries.refresh} />}
           ListEmptyComponent={
-            <EmptyState
-              icon="chatbubbles-outline"
-              title="No leads found"
-              message={filter === 'All' && !q ? 'Create a lead to start tracking it here.' : undefined}
-            />
+            view === 'leads' ? (
+              <EmptyState
+                icon="chatbubbles-outline"
+                title="No leads found"
+                message={filter === 'All' && !q ? 'Create a lead to start tracking it here.' : undefined}
+              />
+            ) : (
+              <EmptyState
+                icon="trophy-outline"
+                title="No opportunities yet"
+                message={filter === 'All' && !q ? 'Leads move here once Ambuja Neotia converts them into opportunities.' : undefined}
+              />
+            )
           }
           renderItem={({ item: e }) => (
             <Card
               onPress={() => router.push({ pathname: '/enquiries/[id]', params: { id: e.id } })}
-              style={isConverted(e) ? styles.converted : undefined}
+              style={view === 'opportunities' ? styles.converted : undefined}
             >
               <View style={styles.top}>
                 <Text style={styles.number}>{e.enquiryNumber}</Text>
-                <StatusBadge status={e.status} />
+                <StageBadge stage={brokerStage(e)} />
               </View>
               <Text style={styles.name}>
                 {e.firstName} {e.lastName}
               </Text>
-              {isConverted(e) ? (
-                <View style={{ marginTop: 6 }}>
-                  <OpportunityBadge stage={e.opportunityStage} />
-                </View>
-              ) : null}
               <View style={styles.metaRow}>
                 <Meta icon="business-outline" text={e.projectName ?? '—'} />
                 <Meta icon="call-outline" text={e.mobile} />
@@ -122,6 +162,20 @@ function Meta({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: stri
 }
 
 const styles = StyleSheet.create({
+  toggle: {
+    flexDirection: 'row',
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    padding: 4,
+    borderRadius: radius.md,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  toggleItem: { flex: 1, paddingVertical: 9, borderRadius: radius.sm + 2, alignItems: 'center' },
+  toggleActive: { backgroundColor: colors.primary },
+  toggleText: { fontSize: 14, fontWeight: '700', color: colors.textMuted },
+  toggleTextActive: { color: colors.white },
   filters: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, gap: spacing.sm },
   filter: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
   filterActive: { backgroundColor: colors.primary, borderColor: colors.primary },

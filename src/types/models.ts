@@ -46,10 +46,10 @@ export const ENQUIRY_STATUSES = [
   'No action needed',
 ] as const;
 export type EnquiryStatus = (typeof ENQUIRY_STATUSES)[number];
-/** Closed without being qualified (shown as closed, not on the progress tracker). */
 /** The lead has been converted into a Salesforce Opportunity. */
 export const isConverted = (e: Pick<Enquiry, 'opportunityId' | 'opportunityStage'>): boolean => !!(e.opportunityId || e.opportunityStage);
 
+/** Closed without being qualified (shown as closed, not on the progress tracker). */
 export const CLOSED_STATUSES: readonly EnquiryStatus[] = ['Unqualified', 'DND', 'No action needed'];
 /** Visit confirmed or further: counted as site visits. */
 export const SITE_VISIT_STATUSES: readonly EnquiryStatus[] = ['Visit confirmed', 'Qualified'];
