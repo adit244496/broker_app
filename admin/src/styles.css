@@ -363,3 +363,11 @@ td .sub { display: block; color: var(--text-muted); font-size: 12px; }
 .preview-body strong { font-size: 16px; }
 .preview-body .sub { color: var(--text-muted); font-size: 12.5px; }
 .preview-body .chip { align-self: flex-start; margin-top: 4px; }
+
+/* Statuses shown to brokers */
+.status-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+@media (max-width: 720px) { .status-groups { grid-template-columns: minmax(0, 1fr); } }
+.status-group h3 { margin: 0 0 4px; font-size: 14px; }
+.status-group-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.status-group-head button { background: none; border: 0; padding: 0; color: var(--primary); font-size: 12.5px; cursor: pointer; }
+.status-list { display: flex; flex-direction: column; gap: 6px; }

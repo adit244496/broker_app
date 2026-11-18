@@ -9,11 +9,11 @@ import { useDebounced } from '@/hooks/useDebounced';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { colors, radius, spacing, TAB_BAR_HEIGHT } from '@/theme';
 import { isConverted } from '@/types/models';
-import { brokerStage, LEAD_STAGES, OPPORTUNITY_STAGES, type BrokerStage } from '@/utils/brokerStage';
+import { inOrder, LEAD_STATUS_ORDER, OPPORTUNITY_STAGES, shownStatus } from '@/utils/brokerStage';
 import { formatDate } from '@/utils/format';
 
 type View_ = 'leads' | 'opportunities';
-type Filter = BrokerStage | 'All';
+type Filter = string; // 'All', or a status the broker sees
 
 export function EnquiriesTab() {
   const router = useRouter();
@@ -30,15 +30,18 @@ export function EnquiriesTab() {
   const opportunities = useMemo(() => enquiries.data?.filter(isConverted), [enquiries.data]);
   const inView = view === 'leads' ? leads : opportunities;
   const visible = useMemo(
-    () => (filter === 'All' ? inView : inView?.filter((e) => brokerStage(e) === filter)),
+    () => (filter === 'All' ? inView : inView?.filter((e) => shownStatus(e) === filter)),
     [inView, filter],
   );
 
-  // Only the stages something is in, so the chips stay short.
-  const stages = (view === 'leads' ? LEAD_STAGES : OPPORTUNITY_STAGES) as readonly BrokerStage[];
-  const counts = new Map<BrokerStage, number>();
-  for (const e of inView ?? []) counts.set(brokerStage(e), (counts.get(brokerStage(e)) ?? 0) + 1);
-  const chips: Filter[] = ['All', ...stages.filter((s) => counts.get(s) || s === filter)];
+  // Lead statuses under Leads, Opportunity stages under Opportunities; only the ones something is in.
+  const counts = new Map<string, number>();
+  for (const e of inView ?? []) {
+    const s = shownStatus(e);
+    if (s) counts.set(s, (counts.get(s) ?? 0) + 1);
+  }
+  const order = view === 'leads' ? LEAD_STATUS_ORDER : OPPORTUNITY_STAGES;
+  const chips: Filter[] = ['All', ...inOrder([...counts.keys(), ...(filter !== 'All' ? [filter] : [])], order)];
 
   const switchTo = (v: View_) => {
     setView(v);
@@ -129,7 +132,7 @@ export function EnquiriesTab() {
             >
               <View style={styles.top}>
                 <Text style={styles.number}>{e.enquiryNumber}</Text>
-                <StageBadge stage={brokerStage(e)} />
+                {shownStatus(e) ? <StageBadge stage={shownStatus(e)!} /> : null}
               </View>
               <Text style={styles.name}>
                 {e.firstName} {e.lastName}

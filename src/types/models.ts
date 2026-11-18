@@ -81,6 +81,10 @@ export interface Enquiry {
   siteVisitDate?: string;
   /** Set once Salesforce converts the lead into an Opportunity. */
   opportunityId?: string;
+  /** The Lead Status the broker sees: the last one an admin hasn't hidden (undefined = none yet). */
+  visibleStatus?: string;
+  /** The Opportunity stage the broker sees, likewise. */
+  visibleStage?: string;
   /** Once the lead is converted: the Opportunity's Stage (Visit Done, Booked, ...), a separate picklist. */
   opportunityStage?: string;
   remarks?: string;

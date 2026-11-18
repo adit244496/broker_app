@@ -8,6 +8,7 @@ import { formatDate } from '@/utils/format';
 import { AccountFormCard } from './AccountFormCard';
 import { LeadFormCard } from './LeadFormCard';
 import { SmsSettingsCard } from './SmsSettingsCard';
+import { StatusVisibilityCard } from './StatusVisibilityCard';
 import { WhatsAppSettingsCard } from './WhatsAppSettingsCard';
 
 const PROVIDERS: { value: EmailProvider; label: string; help: string }[] = [
@@ -31,7 +32,7 @@ export function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" subtitle="Email, SMS and WhatsApp sending, who approves new brokers, and the account and lead forms" />
+      <PageHeader title="Settings" subtitle="Email, SMS and WhatsApp sending, who approves new brokers, the account and lead forms, and the statuses brokers see" />
       {settings.error && !settings.data ? (
         <ErrorState message={settings.error} onRetry={settings.reload} />
       ) : !settings.data ? (
@@ -44,6 +45,7 @@ export function SettingsPage() {
           <HodCard emailReady={emailReady ?? settings.data.configured} />
           <AccountFormCard />
           <LeadFormCard />
+          <StatusVisibilityCard />
         </div>
       )}
     </>

@@ -10,6 +10,8 @@ import type {
   EmailSettingsInput,
   SmsSettings,
   SmsSettingsInput,
+  StatusVisibility,
+  StatusVisibilityInput,
   WhatsAppSettings,
   WhatsAppSettingsInput,
   Enquiry,
@@ -305,6 +307,17 @@ let accountForm: AccountForm = { fields: defaultAccountFields(), coreKeys: CORE_
 let hods: Hod[] = [];
 let nextHodId = 1;
 let emailSettings: EmailSettings = { source: 'none', configured: false, hasPassword: false };
+const LEAD_STATUSES = ['New', 'Working', 'Follow up', 'Unanswered', 'Not Reachable', 'Nurturing', 'Visit confirmed', 'Qualified', 'Unqualified', 'DND', 'No action needed'];
+const OPPORTUNITY_STAGES = ['Qualification', 'Needs Analysis', 'Leased', 'Open', 'Proposal', 'Negotiation', 'Site Visit', 'Visit Confirmed', 'Visit Done', 'Revisit', 'Booked', 'Blocked', 'Booking Cancelled', 'Closed Lost', 'Closed Won'];
+let hiddenFromBrokers: StatusVisibilityInput = { hiddenStatuses: [], hiddenStages: [] };
+let statusesUpdated: { at?: string; by?: string } = {};
+const statusView = (): StatusVisibility => ({
+  leadStatuses: LEAD_STATUSES.map((value) => ({ value, visible: !hiddenFromBrokers.hiddenStatuses.includes(value) })),
+  opportunityStages: OPPORTUNITY_STAGES.map((value) => ({ value, visible: !hiddenFromBrokers.hiddenStages.includes(value) })),
+  updatedAt: statusesUpdated.at,
+  updatedBy: statusesUpdated.by,
+});
+
 let whatsappSettings: WhatsAppSettings = { enabled: false, active: false, hasApiKey: false, codeInButton: true };
 let smsSettings: SmsSettings = {
   source: 'none',
@@ -495,6 +508,20 @@ export const mock = {
     requireAdmin();
     if (!smsSettings.hasPassword) throw new Error('Save the Gupshup details and password first.');
     return { sent: true, to: `+91 ******${mobile.replace(/\D/g, '').slice(-4)}` };
+  },
+
+  async getStatusVisibility(): Promise<StatusVisibility> {
+    await delay(200);
+    requireAdmin();
+    return statusView();
+  },
+
+  async saveStatusVisibility(input: StatusVisibilityInput): Promise<StatusVisibility> {
+    await delay(400);
+    requireAdmin();
+    hiddenFromBrokers = { hiddenStatuses: [...input.hiddenStatuses], hiddenStages: [...input.hiddenStages] };
+    statusesUpdated = { at: new Date().toISOString(), by: session?.user.name };
+    return statusView();
   },
 
   async getWhatsappSettings(): Promise<WhatsAppSettings> {

@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { colors, radius, shadow, spacing, statusColors } from '@/theme';
 import type { EnquiryStatus } from '@/types/models';
-import { STAGE_COLORS, type BrokerStage } from '@/utils/brokerStage';
+import { statusColor } from '@/utils/brokerStage';
 
 /** The site's logo is white on transparent, so it always sits on a brand-coloured band. */
 export function BrandLogo({ style }: { style?: StyleProp<ViewStyle> }) {
@@ -99,9 +99,9 @@ export function StatusBadge({ status }: { status: EnquiryStatus }) {
   );
 }
 
-/** The simple stage brokers see (see utils/brokerStage.ts), not the raw Salesforce status. */
-export function StageBadge({ stage }: { stage: BrokerStage }) {
-  const c = STAGE_COLORS[stage];
+/** A Lead Status or Opportunity stage, as the broker sees it (see utils/brokerStage.ts). */
+export function StageBadge({ stage }: { stage: string }) {
+  const c = statusColor(stage);
   return (
     <View style={[s.badge, { backgroundColor: c.bg }]}>
       <Text style={[s.badgeText, { color: c.fg }]}>{stage}</Text>

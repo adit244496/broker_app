@@ -7,6 +7,8 @@ import type {
   EmailSettings,
   EmailSettingsInput,
   SmsSettings,
+  StatusVisibility,
+  StatusVisibilityInput,
   SmsSettingsInput,
   WhatsAppSettings,
   WhatsAppSettingsInput,
@@ -125,6 +127,14 @@ export const settingsApi = {
   async testSms(mobile: string): Promise<{ sent: boolean; to: string }> {
     if (env.useMock) return mock.testSms(mobile);
     return request(endpoints.testSms(), { method: 'POST', body: { mobile } });
+  },
+  async getStatusVisibility(): Promise<StatusVisibility> {
+    if (env.useMock) return mock.getStatusVisibility();
+    return request<StatusVisibility>(endpoints.statusVisibility());
+  },
+  async saveStatusVisibility(input: StatusVisibilityInput): Promise<StatusVisibility> {
+    if (env.useMock) return mock.saveStatusVisibility(input);
+    return request<StatusVisibility>(endpoints.statusVisibility(), { method: 'PUT', body: input });
   },
   async getWhatsapp(): Promise<WhatsAppSettings> {
     if (env.useMock) return mock.getWhatsappSettings();

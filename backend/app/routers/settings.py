@@ -8,7 +8,7 @@ from app.config import get_settings
 from app.deps import Admin, Db, Reviewer, Salesforce
 from app.email_settings import PRESETS, Provider, SavedSmtp, Security, active_config, load_saved, save
 from app.db import utcnow
-from app import account_form, lead_form, sms_settings, whatsapp_settings
+from app import account_form, lead_form, sms_settings, status_visibility, whatsapp_settings
 from app.partners import MOBILE_RE, normalize_mobile
 from app.sms import GupshupSms, SmsError
 from app.whatsapp import GupshupWhatsApp, WhatsAppError
@@ -549,3 +549,52 @@ def reset_lead_form(ctx: Admin, db: Db):
         db.add(AuditLog(admin_id=ctx.admin.id, action="lead_form_reset"))
         db.commit()
     return get_lead_form(ctx, db)
+
+
+
+# ---------- Statuses shown to brokers ----------
+
+
+def _statuses_view(db: Db) -> dict:
+    v = status_visibility.load(db)
+    row = db.get(AppSetting, status_visibility.KEY)
+    by = db.get(AdminUser, row.updated_by) if row and row.updated_by else None
+
+    def options(known: list[str], hidden: frozenset[str]) -> list[dict]:
+        # Hidden values Salesforce no longer lists stay here, so they can be shown again.
+        extra = sorted(h for h in hidden if h.lower() not in {k.lower() for k in known})
+        return [{"value": value, "visible": value.lower() not in {h.lower() for h in hidden}} for value in known + extra]
+
+    return {
+        "leadStatuses": options(status_visibility.LEAD_STATUSES, v.hidden_statuses),
+        "opportunityStages": options(status_visibility.OPPORTUNITY_STAGES, v.hidden_stages),
+        "updatedAt": row.updated_at.isoformat() if row and row.updated_at else None,
+        "updatedBy": by.name if by else None,
+    }
+
+
+class StatusVisibilityIn(BaseModel):
+    hiddenStatuses: list[str] = Field(default_factory=list, max_length=100)
+    hiddenStages: list[str] = Field(default_factory=list, max_length=100)
+
+    @field_validator("hiddenStatuses", "hiddenStages")
+    @classmethod
+    def clean(cls, values: list[str]) -> list[str]:
+        out = [v.strip() for v in values if isinstance(v, str) and v.strip()]
+        if any(len(v) > 80 for v in out):
+            raise ValueError("Status names are at most 80 characters")
+        return out
+
+
+@router.get("/statuses")
+def get_status_visibility(ctx: Admin, db: Db):
+    return _statuses_view(db)
+
+
+@router.put("/statuses")
+def save_status_visibility(body: StatusVisibilityIn, ctx: Admin, db: Db):
+    status_visibility.save(db, body.hiddenStatuses, body.hiddenStages, ctx.admin.id)
+    hidden = ", ".join(body.hiddenStatuses + body.hiddenStages) or "none"
+    db.add(AuditLog(admin_id=ctx.admin.id, action="status_visibility_update", detail=f"Hidden from brokers: {hidden}"[:500]))
+    db.commit()
+    return _statuses_view(db)

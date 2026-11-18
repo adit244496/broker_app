@@ -101,6 +101,9 @@ export const enquiryFromSf = (r: SfRecord): Enquiry => ({
   preferredVisitDate: r.Preferred_Site_Visit_Date__c,
   siteVisitDate: r.Site_Visit_Date__c ?? undefined,
   opportunityId: r.Opportunity_Id ?? undefined,
+  // Older servers don't send these: everything is visible there.
+  visibleStatus: (r.Visible_Status === undefined ? (r.Status ?? r.Status__c) : r.Visible_Status) ?? undefined,
+  visibleStage: (r.Visible_Stage === undefined ? r.Opportunity_Stage : r.Visible_Stage) ?? undefined,
   opportunityStage: r.Opportunity_Stage ?? undefined,
   remarks: r.Remarks__c,
   brokerId: r.Channel_Partner__c,

@@ -21,6 +21,7 @@ export const endpoints = {
   smsSettings: () => `/admin/settings/sms`,
   testSms: () => `/admin/settings/sms/test`,
   whatsappSettings: () => `/admin/settings/whatsapp`,
+  statusVisibility: () => `/admin/settings/statuses`,
   testWhatsapp: () => `/admin/settings/whatsapp/test`,
   hods: () => `/admin/settings/hods`,
   accountForm: () => `/admin/settings/account-form`,

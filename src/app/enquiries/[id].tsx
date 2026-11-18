@@ -6,7 +6,7 @@ import { Card, ErrorState, InfoRow, Loading, SectionTitle, StageBadge } from '@/
 import { useAsync } from '@/hooks/useAsync';
 import { colors, spacing } from '@/theme';
 import { CLOSED_STATUSES, isConverted, type EnquiryStatus } from '@/types/models';
-import { brokerStage, STAGE_COLORS, stageHistory } from '@/utils/brokerStage';
+import { historySteps, shownStatus, statusColor } from '@/utils/brokerStage';
 import { formatDate } from '@/utils/format';
 import { visitStage } from '@/utils/visits';
 
@@ -40,9 +40,9 @@ export default function EnquiryDetailScreen() {
       ? 3
       : (STAGE_OF[e.status] ?? 0);
   const closed = !converted && CLOSED_STATUSES.includes(e.status);
-  // Each simple stage once, when the lead got there (not every Salesforce status change).
-  const steps = stageHistory(history);
-  const stage = brokerStage(e);
+  // Only the steps an admin hasn't hidden from brokers (the server filters them).
+  const steps = historySteps(history);
+  const stage = shownStatus(e);
 
   return (
     <ScrollView
@@ -56,7 +56,7 @@ export default function EnquiryDetailScreen() {
           <Text style={styles.name}>
             {e.firstName} {e.lastName}
           </Text>
-          <StageBadge stage={stage} />
+          {stage ? <StageBadge stage={stage} /> : null}
         </View>
         <Text style={styles.sub}>Last updated {formatDate(e.lastModifiedDate ?? e.createdDate, true)}</Text>
 
@@ -99,13 +99,13 @@ export default function EnquiryDetailScreen() {
         {steps.map((h, i) => {
           const last = i === steps.length - 1;
           return (
-            <View key={`${h.stage}-${h.date}`} style={styles.tlRow}>
+            <View key={`${h.value}-${h.date}`} style={styles.tlRow}>
               <View style={styles.tlRail}>
-                <View style={[styles.tlDot, { backgroundColor: STAGE_COLORS[h.stage].fg }]} />
+                <View style={[styles.tlDot, { backgroundColor: statusColor(h.value).fg }]} />
                 {!last ? <View style={styles.tlLine} /> : null}
               </View>
               <View style={{ flex: 1, paddingBottom: last ? 0 : spacing.lg }}>
-                <Text style={styles.tlStatus}>{h.stage}</Text>
+                <Text style={styles.tlStatus}>{h.value}</Text>
                 {h.converted ? <Text style={styles.tlConverted}>Converted to Opportunity</Text> : null}
                 <Text style={styles.tlMeta}>{formatDate(h.date, true)}</Text>
                 {h.note ? <Text style={styles.tlNote}>{h.note}</Text> : null}

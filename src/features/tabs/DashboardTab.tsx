@@ -8,7 +8,7 @@ import { useAsync } from '@/hooks/useAsync';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { colors, spacing, TAB_BAR_HEIGHT } from '@/theme';
 import { CLOSED_STATUSES, isConverted } from '@/types/models';
-import { brokerStage, LEAD_STAGES, leadStatusStage, STAGE_COLORS, type BrokerStage } from '@/utils/brokerStage';
+import { shownStatus, statusColor } from '@/utils/brokerStage';
 import { formatDate } from '@/utils/format';
 
 export function DashboardTab() {
@@ -21,13 +21,8 @@ export function DashboardTab() {
   if (summary.loading && !summary.data) return <Loading />;
   if (summary.error && !summary.data) return <ErrorState message={summary.error} onRetry={summary.reload} />;
   const d = summary.data!;
-  // The pipeline in the same few stages brokers see on their leads, not every Salesforce status.
-  const byStage = new Map<BrokerStage, number>();
-  for (const p of d.pipeline) {
-    const stage = leadStatusStage(p.status);
-    byStage.set(stage, (byStage.get(stage) ?? 0) + p.count);
-  }
-  const pipeline = LEAD_STAGES.filter((s) => byStage.has(s)).map((stage) => ({ stage, count: byStage.get(stage) ?? 0 }));
+  // The server leaves out the statuses an admin has hidden from brokers.
+  const pipeline = d.pipeline.map((p) => ({ stage: p.status, count: p.count }));
   const maxCount = Math.max(1, ...pipeline.map((p) => p.count));
 
   // Qualified (Salesforce's converted status) and closed leads aren't open.
@@ -75,7 +70,7 @@ export function DashboardTab() {
           <View key={p.stage} style={styles.pipeRow}>
             <Text style={styles.pipeLabel}>{p.stage}</Text>
             <View style={styles.pipeTrack}>
-              <View style={[styles.pipeFill, { width: `${(p.count / maxCount) * 100}%`, backgroundColor: STAGE_COLORS[p.stage].fg }]} />
+              <View style={[styles.pipeFill, { width: `${(p.count / maxCount) * 100}%`, backgroundColor: statusColor(p.stage).fg }]} />
             </View>
             <Text style={styles.pipeCount}>{p.count}</Text>
           </View>
@@ -100,7 +95,7 @@ export function DashboardTab() {
                   </View>
                 ) : null}
               </View>
-              <StageBadge stage={brokerStage(e)} />
+              {shownStatus(e) ? <StageBadge stage={shownStatus(e)!} /> : null}
             </View>
           </Card>
         ))}
@@ -119,7 +114,7 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 13, color: colors.textMuted },
   actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },
   pipeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
-  pipeLabel: { width: 100, fontSize: 12.5, color: colors.text },
+  pipeLabel: { width: 130, fontSize: 12.5, color: colors.text },
   pipeTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.bg, overflow: 'hidden' },
   pipeFill: { height: 8, borderRadius: 4 },
   pipeCount: { width: 28, textAlign: 'right', fontSize: 13, fontWeight: '700', color: colors.text },

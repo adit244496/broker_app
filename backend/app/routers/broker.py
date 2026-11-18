@@ -14,10 +14,10 @@ from urllib.parse import quote, urlencode
 from fastapi import APIRouter, Body, HTTPException
 from fastapi.responses import HTMLResponse, Response
 
-from app import account_form, lead_form, lead_store
+from app import account_form, lead_form, lead_store, status_visibility
 from app.deps import Broker, Db, Salesforce
 from app.models import BrokerCredential, PartnerRecord
-from app.metrics import broker_stats, pipeline
+from app.metrics import broker_stats
 from app.project_access import can_see, visible_to
 from app.project_media import media_by_project, with_media, with_media_all
 from app.routers.auth import broker_profile
@@ -69,7 +69,8 @@ def me(ctx: Broker, db: Db, sf: Salesforce):
 @router.get("/dashboard/summary")
 def dashboard(ctx: Broker, db: Db, sf: Salesforce):
     _refresh_lead_statuses(db, sf, ctx.account_id)
-    mine = sf.list_enquiries(partner_id=ctx.account_id)
+    shown = status_visibility.load(db)
+    mine = status_visibility.annotate(db, sf.list_enquiries(partner_id=ctx.account_id), shown)
     stats = broker_stats(mine)
     return {
         "totalEnquiries": len(mine),
@@ -78,7 +79,8 @@ def dashboard(ctx: Broker, db: Db, sf: Salesforce):
         "visitsDone": stats["visitsDone"],
         "bookings": stats["bookings"],  # Qualified
         "booked": stats["booked"],  # Opportunity stage Booked / Closed Won
-        "pipeline": pipeline(mine),
+        # By the status the broker sees, for the statuses an admin hasn't hidden.
+        "pipeline": status_visibility.pipeline(mine, shown),
         "recentEnquiries": sorted(mine, key=lambda e: e["CreatedDate"], reverse=True)[:4],
     }
 
@@ -86,20 +88,21 @@ def dashboard(ctx: Broker, db: Db, sf: Salesforce):
 @router.get("/enquiries")
 def list_enquiries(ctx: Broker, db: Db, sf: Salesforce, search: str | None = None):
     _refresh_lead_statuses(db, sf, ctx.account_id)
-    records = sf.list_enquiries(partner_id=ctx.account_id, search=search)
+    records = status_visibility.annotate(db, sf.list_enquiries(partner_id=ctx.account_id, search=search))
     return {"records": sorted(records, key=lambda e: e["CreatedDate"], reverse=True)}
 
 
 @router.get("/enquiries/{enquiry_id}")
 def get_enquiry(enquiry_id: str, ctx: Broker, db: Db, sf: Salesforce):
     _refresh_lead_statuses(db, sf, ctx.account_id)
-    return _own_enquiry(sf, ctx, enquiry_id)
+    return status_visibility.annotate(db, [_own_enquiry(sf, ctx, enquiry_id)])[0]
 
 
 @router.get("/enquiries/{enquiry_id}/status-history")
-def status_history(enquiry_id: str, ctx: Broker, sf: Salesforce):
+def status_history(enquiry_id: str, ctx: Broker, db: Db, sf: Salesforce):
     _own_enquiry(sf, ctx, enquiry_id)
-    return {"records": sf.enquiry_status_history(enquiry_id)}
+    # Only the steps an admin hasn't hidden (Settings -> Statuses shown to brokers).
+    return {"records": status_visibility.visible_history(sf.enquiry_status_history(enquiry_id), status_visibility.load(db))}
 
 
 # Duplicates are by mobile number only, in any project (as Salesforce checks).

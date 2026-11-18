@@ -1,95 +1,85 @@
-import { isConverted, type Enquiry, type EnquiryStatus, type EnquiryStatusEvent } from '@/types/models';
-import { visitStage } from '@/utils/visits';
+import { statusColors } from '@/theme';
+import { ENQUIRY_STATUSES, isConverted, type Enquiry, type EnquiryStatus, type EnquiryStatusEvent } from '@/types/models';
 
 /**
- * Brokers see a few simple stages instead of every Salesforce Lead Status / Opportunity Stage, so the app stays
- * clean: e.g. Working, Follow up, Unanswered, Not Reachable and Nurturing are all "In progress".
+ * What a broker sees for a lead: its Lead Status while it's a lead, its Opportunity stage once converted.
+ * Admins hide statuses in the portal (Settings -> Statuses shown to brokers); the server then sends the last
+ * visible one (visibleStatus / visibleStage), and leaves hidden steps out of the history.
  */
-export const LEAD_STAGES = ['New', 'In progress', 'Site visit', 'Visit done', 'Qualified', 'Closed'] as const;
-export const OPPORTUNITY_STAGES = ['Visit scheduled', 'Visit done', 'Negotiation', 'Booked', 'In progress', 'Cancelled', 'Closed'] as const;
-export type BrokerStage = (typeof LEAD_STAGES)[number] | (typeof OPPORTUNITY_STAGES)[number];
 
-const LEAD_STAGE_OF: Record<EnquiryStatus, BrokerStage> = {
-  New: 'New',
-  Working: 'In progress',
-  'Follow up': 'In progress',
-  Unanswered: 'In progress',
-  'Not Reachable': 'In progress',
-  Nurturing: 'In progress',
-  'Visit confirmed': 'Site visit',
-  Qualified: 'Qualified',
-  Unqualified: 'Closed',
-  DND: 'Closed',
-  'No action needed': 'Closed',
-};
+// Salesforce's Opportunity Stage picklist, in its order.
+export const OPPORTUNITY_STAGES = [
+  'Qualification',
+  'Needs Analysis',
+  'Leased',
+  'Open',
+  'Proposal',
+  'Negotiation',
+  'Site Visit',
+  'Visit Confirmed',
+  'Visit Done',
+  'Revisit',
+  'Booked',
+  'Blocked',
+  'Booking Cancelled',
+  'Closed Lost',
+  'Closed Won',
+] as const;
 
-// Salesforce Opportunity stages (StageName), lower-cased; anything else is "In progress".
-const OPPORTUNITY_STAGE_OF: Record<string, BrokerStage> = {
-  'site visit': 'Visit scheduled',
-  'visit confirmed': 'Visit scheduled',
-  'visit done': 'Visit done',
-  revisit: 'Visit done',
-  proposal: 'Negotiation',
-  negotiation: 'Negotiation',
-  booked: 'Booked',
-  blocked: 'Booked',
-  'closed won': 'Booked',
-  'booking cancelled': 'Cancelled',
-  'closed lost': 'Closed',
-};
+export const LEAD_STATUS_ORDER: readonly string[] = ENQUIRY_STATUSES;
 
-export const STAGE_COLORS: Record<BrokerStage, { fg: string; bg: string }> = {
-  New: { fg: '#1C4F78', bg: '#E3EDF5' },
-  'In progress': { fg: '#2F6C9C', bg: '#E6F0F8' },
-  'Site visit': { fg: '#A35500', bg: '#FEF0DD' },
-  'Visit scheduled': { fg: '#A35500', bg: '#FEF0DD' },
-  'Visit done': { fg: '#0E7490', bg: '#CFFAFE' },
-  Qualified: { fg: '#15803D', bg: '#DCFCE7' },
+const STAGE_COLORS: Record<string, { fg: string; bg: string }> = {
+  Qualification: { fg: '#1C4F78', bg: '#E3EDF5' },
+  'Needs Analysis': { fg: '#2F6C9C', bg: '#E6F0F8' },
+  Leased: { fg: '#0E7490', bg: '#CFFAFE' },
+  Open: { fg: '#2F6C9C', bg: '#E6F0F8' },
+  Proposal: { fg: '#6D28D9', bg: '#EDE9FE' },
   Negotiation: { fg: '#6D28D9', bg: '#EDE9FE' },
+  'Site Visit': { fg: '#A35500', bg: '#FEF0DD' },
+  'Visit Confirmed': { fg: '#A35500', bg: '#FEF0DD' },
+  'Visit Done': { fg: '#0E7490', bg: '#CFFAFE' },
+  Revisit: { fg: '#0E7490', bg: '#CFFAFE' },
   Booked: { fg: '#15803D', bg: '#DCFCE7' },
-  Cancelled: { fg: '#B91C1C', bg: '#FEE2E2' },
-  Closed: { fg: '#5B6B7C', bg: '#EEF2F6' },
+  Blocked: { fg: '#92400E', bg: '#FEF3C7' },
+  'Booking Cancelled': { fg: '#B91C1C', bg: '#FEE2E2' },
+  'Closed Lost': { fg: '#5B6B7C', bg: '#EEF2F6' },
+  'Closed Won': { fg: '#15803D', bg: '#DCFCE7' },
 };
 
-export const leadStatusStage = (status: EnquiryStatus): BrokerStage => LEAD_STAGE_OF[status] ?? 'In progress';
+const DEFAULT_COLOR = { fg: '#5B6B7C', bg: '#EEF2F6' };
 
-export const opportunityStage = (stage: string): BrokerStage => OPPORTUNITY_STAGE_OF[stage.trim().toLowerCase()] ?? 'In progress';
-
-/** What the broker sees for a lead now: its Opportunity stage once converted, else its simplified Lead Status. */
-export function brokerStage(e: Enquiry): BrokerStage {
-  if (isConverted(e)) return e.opportunityStage ? opportunityStage(e.opportunityStage) : 'In progress';
-  const stage = leadStatusStage(e.status);
-  // Salesforce has no status for a visit that has happened: the site visit date has passed.
-  return stage === 'Site visit' && visitStage(e) === 'done' ? 'Visit done' : stage;
+export function statusColor(value: string): { fg: string; bg: string } {
+  return statusColors[value as EnquiryStatus] ?? STAGE_COLORS[value] ?? DEFAULT_COLOR;
 }
 
-export interface StageStep {
-  stage: BrokerStage;
+/** The status the broker sees now, or undefined when nothing visible has happened yet. */
+export function shownStatus(e: Enquiry): string | undefined {
+  return isConverted(e) ? e.visibleStage : e.visibleStatus;
+}
+
+/** Sorts values by Salesforce's picklist order; values Salesforce adds later go last. */
+export function inOrder(values: Iterable<string>, order: readonly string[]): string[] {
+  const rank = (v: string) => {
+    const i = order.indexOf(v);
+    return i === -1 ? order.length : i;
+  };
+  return [...new Set(values)].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+}
+
+export interface HistoryStep {
+  value: string;
   date: string;
-  by?: string;
   note?: string;
   /** The step where the lead became an Opportunity. */
   converted: boolean;
 }
 
-/**
- * The status history as the broker sees it: each change mapped to its simple stage, and repeats of the same
- * stage (e.g. Working -> Unanswered -> Follow up) shown once, when the lead first got there.
- */
-export function stageHistory(history: EnquiryStatusEvent[]): StageStep[] {
-  const steps: StageStep[] = [];
+/** The history as the broker sees it (the server already left hidden steps out). */
+export function historySteps(history: EnquiryStatusEvent[]): HistoryStep[] {
   let wasOpportunity = false;
-  for (const h of history) {
-    const isOpportunity = !!h.stage;
-    const stage = h.stage ? opportunityStage(h.stage) : leadStatusStage(h.status);
-    const converted = isOpportunity && !wasOpportunity;
-    wasOpportunity = wasOpportunity || isOpportunity;
-    const last = steps[steps.length - 1];
-    if (last && last.stage === stage && !converted) {
-      if (h.note && !last.note) last.note = h.note;
-      continue;
-    }
-    steps.push({ stage, date: h.date, by: h.by, note: h.note, converted });
-  }
-  return steps;
+  return history.map((h) => {
+    const converted = !!h.stage && !wasOpportunity;
+    wasOpportunity = wasOpportunity || !!h.stage;
+    return { value: h.stage ?? h.status, date: h.date, note: h.note, converted };
+  });
 }

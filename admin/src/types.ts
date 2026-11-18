@@ -226,6 +226,25 @@ export interface SmsSettingsInput {
   template: string;
 }
 
+/** One Salesforce Lead status or Opportunity stage, and whether brokers see it in the app. */
+export interface StatusOption {
+  value: string;
+  visible: boolean;
+}
+
+/** Which statuses brokers see. Everything is visible until an admin hides it. */
+export interface StatusVisibility {
+  leadStatuses: StatusOption[];
+  opportunityStages: StatusOption[];
+  updatedAt?: string | null;
+  updatedBy?: string | null;
+}
+
+export interface StatusVisibilityInput {
+  hiddenStatuses: string[];
+  hiddenStages: string[];
+}
+
 /** The Gupshup WhatsApp account mobile login codes can be sent from. The API key is never returned. */
 export interface WhatsAppSettings {
   /** Switched on: mobile login codes go by WhatsApp instead of SMS. */

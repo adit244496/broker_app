@@ -8,7 +8,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from app.deps import Db, Salesforce
-from app import lead_store
+from app import lead_store, status_visibility
 from app.models import PartnerRecord
 from app.notify import PushSender, get_push, send_lead_status
 from app.partners import notify_if_ready, sync_partner
@@ -130,7 +130,8 @@ async def lead_updated(
         event.opportunityStage,
     )
     pushed = False
-    if changed:
+    shown = status_visibility.load(db).event_shown(lead.status, lead.opportunity_stage)
+    if changed and shown:
         partner = db.get(PartnerRecord, lead.partner_id)
         if partner and partner.push_token:
             customer = " ".join(x for x in (lead.first_name, lead.last_name) if x) or "Your lead"
