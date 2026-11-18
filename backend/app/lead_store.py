@@ -96,9 +96,9 @@ def apply_salesforce_statuses(db: Session, leads: list[Record]) -> int:
         row = find(db, lead.get("leadId"), None)
         status = _text(lead.get("status"))
         opportunity_id = _text(lead.get("opportunityId"))
-        # Sent once Salesforce adds them to the GET; left out = keep what we have.
-        visit = _visit_date(lead.get("siteVisitDate"))
-        stage = _text(lead.get("opportunityStage"))
+        # Sent once Salesforce adds them to the GET; left out = keep what we have. Key spelling varies.
+        visit = _visit_date(_pick(lead, *VISIT_KEYS))
+        stage = _text(_pick(lead, "opportunityStage", "stageName", "opportunityStageName"))
         if not row or not (status or row.status):
             continue
         if (
@@ -111,6 +111,25 @@ def apply_salesforce_statuses(db: Session, leads: list[Record]) -> int:
         if record_status(db, row, status, None, "Salesforce", visit, opportunity_id, stage):
             changed += 1
     return changed
+
+
+# What Salesforce may call the scheduled site visit in the leads GET (compared ignoring case and underscores).
+VISIT_KEYS = ("siteVisitDate", "newSiteVisitDate", "New_Site_Visit_Date__c", "siteVisitDateTime", "siteVisit", "visitDate")
+
+
+def _key(name: str) -> str:
+    name = name.lower().replace("_", "")
+    return name[:-1] if name.endswith("c") and name.endswith("datec") else name
+
+
+def _pick(record: Record, *names: str):
+    """The first of `names` present in `record`, matching keys without regard to case or underscores."""
+    wanted = [_key(n) for n in names]
+    by_key = {_key(k): v for k, v in record.items() if isinstance(k, str)}
+    for k in wanted:
+        if by_key.get(k) not in (None, ""):
+            return by_key[k]
+    return None
 
 
 def _text(value) -> str | None:

@@ -382,3 +382,12 @@ def test_site_visit_and_opportunity_stage_from_the_leads_endpoint(client, mail, 
     assert lead["Opportunity_Stage"] == "Visit Done" and lead["Opportunity_Id"] == "006C1000000AAA01AA"
     assert lead["Site_Visit_Date__c"] == "2026-11-21T05:30:00+00:00"
     assert len(LocalLeads().history(lead_id)) == 4
+
+
+def test_site_visit_date_key_spelling_varies():
+    from app.lead_store import VISIT_KEYS, _pick
+
+    assert _pick({"New_Site_Visit_Date__c": "2026-11-20"}, *VISIT_KEYS) == "2026-11-20"
+    assert _pick({"newSiteVisitDate": "2026-11-21"}, *VISIT_KEYS) == "2026-11-21"
+    assert _pick({"SiteVisitDate": "2026-11-22"}, *VISIT_KEYS) == "2026-11-22"
+    assert _pick({"siteVisitDate": None, "status": "New"}, *VISIT_KEYS) is None
