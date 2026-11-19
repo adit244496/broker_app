@@ -60,7 +60,8 @@ export function statusColor(value: string): { fg: string; bg: string } {
 
 /** The status the broker sees now, or undefined when nothing visible has happened yet. */
 export function shownStatus(e: Enquiry): string | undefined {
-  return isConverted(e) ? e.visibleStage : e.visibleStatus;
+  // Converted but the Opportunity's stage isn't known yet: its last lead status (e.g. Qualified).
+  return isConverted(e) ? (e.visibleStage ?? e.visibleStatus) : e.visibleStatus;
 }
 
 /** Sorts values by Salesforce's picklist order; values Salesforce adds later go last. */

@@ -65,14 +65,19 @@ def record_status(
     the one we have, and so does a left-out Opportunity stage; the newest update by Salesforce's `changedAt` wins,
     and late ones still go into the history. An Opportunity Id is stored once the lead is converted. Caller commits.
     """
-    if opportunity_id and row.opportunity_id != opportunity_id:
+    converted = bool(opportunity_id) and row.opportunity_id != opportunity_id
+    if converted:
         row.opportunity_id = opportunity_id
     when = changed_at or utcnow()
     status = status or row.status  # after conversion Salesforce may leave the Lead Status out
     new_date = site_visit_date if site_visit_date is not None else row.site_visit_date
     new_stage = opportunity_stage if opportunity_stage is not None else row.opportunity_stage
     if row.status == status and row.site_visit_date == new_date and row.opportunity_stage == new_stage:
-        return False
+        # Converted with nothing else new (e.g. the Opportunity's stage isn't known yet): still a change the
+        # broker must see, and one the caller must commit.
+        if converted:
+            row.updated_at = utcnow()
+        return converted
     db.add(LeadStatusEvent(lead_id=row.id, status=status, site_visit_date=new_date, opportunity_stage=new_stage,
                            changed_at=when, changed_by=changed_by))
     if row.last_changed_at and as_utc(when) < as_utc(row.last_changed_at):

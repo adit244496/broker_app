@@ -391,3 +391,24 @@ def test_site_visit_date_key_spelling_varies():
     assert _pick({"newSiteVisitDate": "2026-11-21"}, *VISIT_KEYS) == "2026-11-21"
     assert _pick({"SiteVisitDate": "2026-11-22"}, *VISIT_KEYS) == "2026-11-22"
     assert _pick({"siteVisitDate": None, "status": "New"}, *VISIT_KEYS) is None
+
+
+def test_conversion_after_the_site_visit_is_kept_even_without_a_stage(client, mail, sf, monkeypatch):
+    """Converted with the same status and visit date as before, and no Opportunity stage yet: still saved."""
+    from app.lead_store import LocalLeads
+    from app.routers import broker as broker_router
+
+    broker = bearer(broker_token(client, mail, ABC_EMAIL))
+    lead_id = client.post("/enquiries", headers=broker, json={"fields": {**LEAD, "mobile": "9876504444"}}).json()["id"]
+    visit = {"leadId": lead_id, "status": "Qualified", "siteVisitDate": "2026-11-26T06:30:00.000Z", "isConverted": False}
+    monkeypatch.setattr(sf, "broker_lead_statuses", lambda partner_id: [visit], raising=False)
+    monkeypatch.setattr(broker_router, "_lead_refreshed", {})
+    client.get("/enquiries", headers=broker)
+    assert LocalLeads().get(lead_id)["Opportunity_Id"] is None
+
+    converted = {**visit, "isConverted": True, "opportunityId": "006C100000KIX5FIAX"}
+    monkeypatch.setattr(sf, "broker_lead_statuses", lambda partner_id: [converted], raising=False)
+    monkeypatch.setattr(broker_router, "_lead_refreshed", {})
+    client.get("/enquiries", headers=broker)
+    lead = LocalLeads().get(lead_id)
+    assert lead["Opportunity_Id"] == "006C100000KIX5FIAX" and lead["Site_Visit_Date__c"] == "2026-11-26T06:30:00+00:00"
