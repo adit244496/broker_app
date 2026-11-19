@@ -10,6 +10,8 @@ export interface LeadsRequest {
 }
 
 interface LeadsLink {
+  /** The home tab on screen ('dashboard', 'enquiries', ...). */
+  activeTab?: string;
   request?: LeadsRequest;
   /** Switches to the Leads tab showing this view and filter. */
   openLeads: (view: LeadsRequest['view'], filter?: string) => void;

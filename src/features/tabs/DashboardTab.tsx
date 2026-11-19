@@ -5,7 +5,7 @@ import { dashboardApi } from '@/api/services';
 import { useAuth } from '@/auth/AuthContext';
 import { BrandLogo, Button, Card, ErrorState, Loading, OpportunityBadge, SectionTitle, StageBadge } from '@/components/ui';
 import { useAsync } from '@/hooks/useAsync';
-import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
+import { useRefreshWhenShown } from '@/hooks/useRefreshWhenShown';
 import { colors, spacing, TAB_BAR_HEIGHT } from '@/theme';
 import { CLOSED_STATUSES, isConverted } from '@/types/models';
 import { shownStatus, statusColor } from '@/utils/brokerStage';
@@ -18,7 +18,7 @@ export function DashboardTab() {
   const { user } = useAuth();
   const { openLeads } = useLeadsLink();
 
-  useRefreshOnFocus(summary.silentReload);
+  useRefreshWhenShown(summary.silentReload, 'dashboard');
 
   if (summary.loading && !summary.data) return <Loading />;
   if (summary.error && !summary.data) return <ErrorState message={summary.error} onRetry={summary.reload} />;

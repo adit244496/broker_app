@@ -55,6 +55,7 @@ export default function Home() {
   const [leadsRequest, setLeadsRequest] = useState<LeadsRequest>();
   const leadsLink = useMemo(
     () => ({
+      activeTab: TABS[index]?.key,
       request: leadsRequest,
       openLeads: (view: LeadsRequest["view"], filter = "All") => {
         setLeadsRequest({ view, filter, nonce: Date.now() });
@@ -63,7 +64,7 @@ export default function Home() {
         pagerRef.current?.setPage(i);
       },
     }),
-    [leadsRequest],
+    [leadsRequest, index],
   );
 
   return (
