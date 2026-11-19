@@ -412,3 +412,37 @@ def test_conversion_after_the_site_visit_is_kept_even_without_a_stage(client, ma
     client.get("/enquiries", headers=broker)
     lead = LocalLeads().get(lead_id)
     assert lead["Opportunity_Id"] == "006C100000KIX5FIAX" and lead["Site_Visit_Date__c"] == "2026-11-26T06:30:00+00:00"
+
+
+def test_opportunity_created_without_converting_the_lead_is_matched_by_mobile(client, mail, sf, monkeypatch):
+    """Salesforce made an Opportunity for the customer but left the lead New: the app still shows it converted."""
+    from app.lead_store import LocalLeads
+    from app.routers import broker as broker_router
+
+    broker = bearer(broker_token(client, mail, ABC_EMAIL))
+    lead_id = client.post("/enquiries", headers=broker, json={"fields": {**LEAD, "mobile": "8585858585"}}).json()["id"]
+    other = client.post("/enquiries", headers=broker, json={"fields": {**LEAD, "mobile": "8585858586"}}).json()["id"]
+    stage = {"value": "Site Visit"}
+
+    def statuses(partner_id):
+        return [{"leadId": lead_id, "status": "New", "isConverted": False, "opportunityId": None},
+                {"leadId": other, "status": "New", "isConverted": False, "opportunityId": None},
+                {"leadId": None, "opportunityId": "006C100000KJwcfIAD", "opportunityStage": stage["value"], "mobile": "8585858585",
+                 "partnerId": "001A1"},
+                # Another broker's customer with the same mobile isn't matched to this broker's lead.
+                {"leadId": None, "opportunityId": "006C100000XXXXXIAD", "opportunityStage": "Booked", "mobile": "8585858586",
+                 "partnerId": "001A2"}]
+
+    monkeypatch.setattr(sf, "broker_lead_statuses", statuses, raising=False)
+    monkeypatch.setattr(broker_router, "_lead_refreshed", {})
+    client.get("/enquiries", headers=broker)
+    lead = LocalLeads().get(lead_id)
+    assert lead["Opportunity_Id"] == "006C100000KJwcfIAD" and lead["Opportunity_Stage"] == "Site Visit" and lead["Status"] == "New"
+    assert LocalLeads().get(other)["Opportunity_Id"] is None
+
+    # Later stage changes reach it through the Opportunity Id, and the lead's own "New" doesn't undo the conversion.
+    stage["value"] = "Visit Done"
+    monkeypatch.setattr(broker_router, "_lead_refreshed", {})
+    client.get("/enquiries", headers=broker)
+    lead = LocalLeads().get(lead_id)
+    assert lead["Opportunity_Id"] == "006C100000KJwcfIAD" and lead["Opportunity_Stage"] == "Visit Done"

@@ -675,21 +675,37 @@ class LiveSalesforce:
         if res.status_code >= 400 or data.get("success") is not True:
             raise SalesforceError(f"Leads not read: {data.get('message') or res.status_code}")
         leads = [lead for lead in data.get("leads") or [] if isinstance(lead, dict) and lead.get("leadId")]
-        # Converted leads: their Opportunity's Stage, from the opportunities endpoint (by Opportunity Id).
-        if any(lead.get("opportunityId") and not lead.get("opportunityStage") for lead in leads):
-            try:
-                stages = self.broker_opportunity_stages(partner_id)
-            except SalesforceError as e:
-                log.warning("Opportunity stages not read for %s: %s", partner_id, e)
-                stages = None
-            for lead in leads:
-                stage = (stages or {}).get(lead.get("opportunityId") or "")
-                if stage and not lead.get("opportunityStage"):
-                    lead["opportunityStage"] = stage
+        if not leads or all(lead.get("opportunityStage") for lead in leads):
+            return leads
+        # The broker's Opportunities: the Stage of converted leads (by Opportunity Id), and Opportunities Salesforce
+        # created for a customer without converting the lead (no lead points to them), matched by mobile later.
+        try:
+            opportunities = self.broker_opportunities(partner_id) or []
+        except SalesforceError as e:
+            log.warning("Opportunities not read for %s: %s", partner_id, e)
+            return leads
+        stages = {o["id"]: o["stageName"] for o in opportunities if o["stageName"]}
+        for lead in leads:
+            stage = stages.get(lead.get("opportunityId") or "")
+            if stage and not lead.get("opportunityStage"):
+                lead["opportunityStage"] = stage
+        linked = {lead.get("opportunityId") for lead in leads}
+        for o in opportunities:
+            if o["id"] not in linked and o["mobile"]:
+                leads.append({"leadId": None, "opportunityId": o["id"], "opportunityStage": o["stageName"],
+                              "mobile": o["mobile"], "partnerId": partner_id})
         return leads
 
     def broker_opportunity_stages(self, partner_id: str) -> dict[str, str] | None:
         """{Opportunity Id: StageName} for this broker's Opportunities. None when the endpoint isn't set."""
+        opportunities = self.broker_opportunities(partner_id)
+        if opportunities is None:
+            return None
+        return {o["id"]: o["stageName"] for o in opportunities if o["stageName"]}
+
+    def broker_opportunities(self, partner_id: str) -> list[Record] | None:
+        """This broker's Opportunities as [{"id", "stageName", "mobile"}] (mobile: 10 digits or None). None when the
+        opportunities endpoint isn't set."""
         endpoint = self._s.salesforce_opportunities_endpoint
         if not endpoint:
             return None
@@ -702,11 +718,14 @@ class LiveSalesforce:
             data = {}
         if res.status_code >= 400 or data.get("success") is not True:
             raise SalesforceError(f"Opportunities not read: {data.get('message') or res.status_code}")
-        return {
-            str(o["id"]): str(o["stageName"]).strip()
-            for o in data.get("opportunities") or []
-            if isinstance(o, dict) and o.get("id") and isinstance(o.get("stageName"), str) and o["stageName"].strip()
-        }
+        result = []
+        for o in data.get("opportunities") or []:
+            if not isinstance(o, dict) or not o.get("id"):
+                continue
+            stage = o.get("stageName").strip() if isinstance(o.get("stageName"), str) else ""
+            mobile = re.sub(r"\D", "", str(o.get("accountMobileNumber") or ""))[-10:]
+            result.append({"id": str(o["id"]), "stageName": stage or None, "mobile": mobile if len(mobile) == 10 else None})
+        return result
 
     def get_enquiry(self, enquiry_id: str) -> Record | None:
         if self._leads_endpoint:

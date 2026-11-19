@@ -99,6 +99,10 @@ def apply_salesforce_statuses(db: Session, leads: list[Record]) -> int:
     changed = 0
     for lead in leads:
         row = find(db, lead.get("leadId"), None)
+        if not lead.get("leadId") and lead.get("opportunityId"):
+            # An Opportunity no lead points to (created without converting the lead): ours if already linked,
+            # else the broker's unconverted lead for the same customer mobile.
+            row = find(db, None, lead["opportunityId"]) or _unconverted_by_mobile(db, lead.get("partnerId"), lead.get("mobile"))
         status = _text(lead.get("status"))
         opportunity_id = _text(lead.get("opportunityId"))
         # Sent once Salesforce adds them to the GET; left out = keep what we have. Key spelling varies.
@@ -116,6 +120,15 @@ def apply_salesforce_statuses(db: Session, leads: list[Record]) -> int:
         if record_status(db, row, status, None, "Salesforce", visit, opportunity_id, stage):
             changed += 1
     return changed
+
+
+def _unconverted_by_mobile(db: Session, partner_id: str | None, mobile: str | None) -> LeadRecord | None:
+    if not partner_id or not mobile:
+        return None
+    q = (select(LeadRecord)
+         .where(LeadRecord.partner_id == partner_id, LeadRecord.mobile == mobile, LeadRecord.opportunity_id.is_(None))
+         .order_by(LeadRecord.created_at.desc()))
+    return db.scalar(q)
 
 
 # What Salesforce may call the scheduled site visit in the leads GET (compared ignoring case and underscores).

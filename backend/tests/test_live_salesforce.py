@@ -697,7 +697,8 @@ def test_broker_lead_statuses_come_from_the_leads_endpoint(fake):
     sf = live(fake, **LEADS)
     leads = sf.broker_lead_statuses(PARTNER_ID)
     assert [(l["leadId"], l["status"]) for l in leads] == [("00QC1000000AAA01AA", "Open - Not Contacted")]
-    assert parse_qs(urlparse(str(fake.requests[-1].url)).query)["brokerAccountId"] == [PARTNER_ID]
+    leads_call = next(r for r in fake.requests if r.url.path.endswith("/broker-app/leads"))
+    assert parse_qs(urlparse(str(leads_call.url)).query)["brokerAccountId"] == [PARTNER_ID]
     # Without the leads endpoint, leads are read from Salesforce directly: nothing to copy.
     assert live(fake).broker_lead_statuses(PARTNER_ID) is None
 
@@ -721,9 +722,20 @@ def test_converted_leads_get_their_opportunity_stage(fake):
     assert parse_qs(urlparse(str(opp_calls[-1].url)).query)["channelPartnerAccountId"] == [PARTNER_ID]
 
 
-def test_no_converted_leads_means_no_opportunities_call(fake):
-    live(fake, **LEADS).broker_lead_statuses(PARTNER_ID)
+def test_no_leads_means_no_opportunities_call(fake):
+    fake.leads.clear()
+    assert live(fake, **LEADS).broker_lead_statuses(PARTNER_ID) == []
     assert not any(r.url.path.endswith("/broker-app/opportunities") for r in fake.requests)
+
+
+def test_opportunities_no_lead_points_to_are_passed_on_with_their_mobile(fake):
+    fake.opportunities.append({"id": "006C1000000AAA03AA", "stageName": "Site Visit", "accountMobileNumber": "+91 98765 01234",
+                               "channelPartnerAccountId": PARTNER_ID})
+    leads = live(fake, **LEADS).broker_lead_statuses(PARTNER_ID)
+    extra = [l for l in leads if not l.get("leadId")]
+    # 006C...01 has no mobile: nothing to match it by.
+    assert extra == [{"leadId": None, "opportunityId": "006C1000000AAA03AA", "opportunityStage": "Site Visit",
+                      "mobile": "9876501234", "partnerId": PARTNER_ID}]
 
 
 def test_opportunities_endpoint_down_still_returns_the_leads(fake):
