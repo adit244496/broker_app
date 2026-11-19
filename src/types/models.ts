@@ -184,7 +184,12 @@ export interface DashboardSummary {
   bookings: number;
   /** Booked: Opportunity stage Booked or Closed Won. */
   booked: number;
+  /** Leads not converted yet, by Lead Status. */
   pipeline: { status: EnquiryStatus; count: number }[];
+  /** Converted leads by Opportunity stage, in Salesforce's order; only stages something is in. */
+  opportunityPipeline: { stage: string; count: number }[];
+  /** Leads converted into Opportunities. */
+  opportunities: number;
   recentEnquiries: Enquiry[];
 }
 

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { dashboardApi } from '@/api/services';
 import { useAuth } from '@/auth/AuthContext';
 import { BrandLogo, Button, Card, ErrorState, Loading, OpportunityBadge, SectionTitle, StageBadge } from '@/components/ui';
@@ -10,11 +10,13 @@ import { colors, spacing, TAB_BAR_HEIGHT } from '@/theme';
 import { CLOSED_STATUSES, isConverted } from '@/types/models';
 import { shownStatus, statusColor } from '@/utils/brokerStage';
 import { formatDate } from '@/utils/format';
+import { useLeadsLink } from './LeadsLink';
 
 export function DashboardTab() {
   const router = useRouter();
   const summary = useAsync(() => dashboardApi.getSummary());
   const { user } = useAuth();
+  const { openLeads } = useLeadsLink();
 
   useRefreshOnFocus(summary.silentReload);
 
@@ -23,7 +25,7 @@ export function DashboardTab() {
   const d = summary.data!;
   // The server leaves out the statuses an admin has hidden from brokers.
   const pipeline = d.pipeline.map((p) => ({ stage: p.status, count: p.count }));
-  const maxCount = Math.max(1, ...pipeline.map((p) => p.count));
+  const opportunityPipeline = d.opportunityPipeline;
 
   // Qualified (Salesforce's converted status) and closed leads aren't open.
   const closedOnly = d.pipeline.filter((p) => CLOSED_STATUSES.includes(p.status)).reduce((n, p) => n + p.count, 0);
@@ -65,17 +67,20 @@ export function DashboardTab() {
       </View>
 
       <SectionTitle>Lead pipeline</SectionTitle>
-      <Card>
-        {pipeline.map((p) => (
-          <View key={p.stage} style={styles.pipeRow}>
-            <Text style={styles.pipeLabel}>{p.stage}</Text>
-            <View style={styles.pipeTrack}>
-              <View style={[styles.pipeFill, { width: `${(p.count / maxCount) * 100}%`, backgroundColor: statusColor(p.stage).fg }]} />
-            </View>
-            <Text style={styles.pipeCount}>{p.count}</Text>
-          </View>
-        ))}
-      </Card>
+      <Pipeline rows={pipeline} onPress={(stage) => openLeads('leads', stage)} />
+
+      <SectionTitle>Opportunity pipeline</SectionTitle>
+      {opportunityPipeline.length ? (
+        <Pipeline rows={opportunityPipeline} onPress={(stage) => openLeads('opportunities', stage)} />
+      ) : (
+        <Card>
+          <Text style={styles.pipeEmpty}>
+            {d.opportunities
+              ? 'Your converted leads have no Opportunity stage yet.'
+              : 'Leads appear here once Ambuja Neotia converts them into opportunities.'}
+          </Text>
+        </Card>
+      )}
 
       <SectionTitle>Recent leads</SectionTitle>
       <View style={{ gap: spacing.md }}>
@@ -104,6 +109,31 @@ export function DashboardTab() {
   );
 }
 
+/** One bar per status or stage; tapping a row opens that list in the Leads tab. */
+function Pipeline({ rows, onPress }: { rows: { stage: string; count: number }[]; onPress: (stage: string) => void }) {
+  const max = Math.max(1, ...rows.map((p) => p.count));
+  return (
+    <Card>
+      {rows.map((p) => (
+        <Pressable
+          key={p.stage}
+          style={({ pressed }) => [styles.pipeRow, pressed && { opacity: 0.6 }]}
+          onPress={() => onPress(p.stage)}
+          disabled={!p.count}
+          accessibilityRole="button"
+          accessibilityLabel={`${p.stage}: ${p.count}`}
+        >
+          <Text style={styles.pipeLabel}>{p.stage}</Text>
+          <View style={styles.pipeTrack}>
+            <View style={[styles.pipeFill, { width: `${(p.count / max) * 100}%`, backgroundColor: statusColor(p.stage).fg }]} />
+          </View>
+          <Text style={styles.pipeCount}>{p.count}</Text>
+        </Pressable>
+      ))}
+    </Card>
+  );
+}
+
 const styles = StyleSheet.create({
   hello: { fontSize: 26, fontWeight: '800', color: colors.text },
   sub: { fontSize: 14, color: colors.textMuted, marginTop: 2, marginBottom: spacing.lg },
@@ -117,6 +147,7 @@ const styles = StyleSheet.create({
   pipeLabel: { width: 130, fontSize: 12.5, color: colors.text },
   pipeTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.bg, overflow: 'hidden' },
   pipeFill: { height: 8, borderRadius: 4 },
+  pipeEmpty: { fontSize: 13.5, color: colors.textMuted },
   pipeCount: { width: 28, textAlign: 'right', fontSize: 13, fontWeight: '700', color: colors.text },
   recentRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   recentName: { fontSize: 15, fontWeight: '700', color: colors.text },

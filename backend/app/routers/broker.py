@@ -89,8 +89,11 @@ def dashboard(ctx: Broker, db: Db, sf: Salesforce):
         "visitsDone": stats["visitsDone"],
         "bookings": stats["bookings"],  # Qualified
         "booked": stats["booked"],  # Opportunity stage Booked / Closed Won
-        # By the status the broker sees, for the statuses an admin hasn't hidden.
+        # Leads not converted yet, by the Lead Status the broker sees (statuses an admin hasn't hidden)...
         "pipeline": status_visibility.pipeline(mine, shown),
+        # ...and converted ones, by the Opportunity stage the broker sees.
+        "opportunityPipeline": status_visibility.opportunity_pipeline(mine, shown),
+        "opportunities": sum(1 for e in mine if status_visibility.is_converted(e)),
         "recentEnquiries": sorted(mine, key=lambda e: e["CreatedDate"], reverse=True)[:4],
     }
 

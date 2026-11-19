@@ -81,3 +81,73 @@ def test_only_admins_change_it(client, mail):
     broker = bearer(broker_token(client, mail, ABC_EMAIL))
     assert client.get("/admin/settings/statuses", headers=broker).status_code == 401
     assert client.put("/admin/settings/statuses", headers=broker, json={"hiddenStatuses": [], "hiddenStages": []}).status_code == 401
+
+
+def test_pipelines_split_leads_from_opportunities():
+    from app.status_visibility import opportunity_pipeline, pipeline
+
+    leads = [
+        {"Visible_Status": "New", "Visible_Stage": None},
+        {"Visible_Status": "Working", "Visible_Stage": None},
+        # Converted: counted by stage only, even when the lead itself still says New.
+        {"Visible_Status": "Qualified", "Visible_Stage": "Visit Done", "Opportunity_Id": "006A"},
+        {"Visible_Status": "New", "Visible_Stage": "Site Visit", "Opportunity_Id": "006B"},
+        {"Visible_Status": "Qualified", "Visible_Stage": "Site Visit", "Opportunity_Id": "006C"},
+        {"Visible_Status": "Qualified", "Visible_Stage": None, "Opportunity_Id": "006D"},  # stage not known yet
+    ]
+    v = Visibility()
+    by_status = {p["status"]: p["count"] for p in pipeline(leads, v)}
+    assert by_status["New"] == 1 and by_status["Working"] == 1 and by_status["Qualified"] == 0
+    assert opportunity_pipeline(leads, v) == [{"stage": "Site Visit", "count": 2}, {"stage": "Visit Done", "count": 1}]
+
+
+def test_salesforce_changes_to_leads_and_opportunities_reach_the_app(client, mail, sf, monkeypatch):
+    """The whole sync as in production: Salesforce's leads GET and opportunities GET, read when the broker looks."""
+    from app.lead_store import LocalLeads
+    from app.routers import broker as broker_router
+
+    # Live mode reads the broker's leads from our copy, which the sync updates.
+    monkeypatch.setattr(sf, "list_enquiries", lambda **kw: LocalLeads().list_leads(**kw))
+    monkeypatch.setattr(sf, "get_enquiry", LocalLeads().get)
+    monkeypatch.setattr(sf, "enquiry_status_history", LocalLeads().history)
+    broker = bearer(broker_token(client, mail, ABC_EMAIL))
+    lead_id = client.post("/enquiries", headers=broker, json={"fields": {
+        "first_name": "Asha", "last_name": "Roy", "mobile": "9876507777", "email": "asha@example.com", "project": "a0P002"}}).json()["id"]
+    salesforce = {"status": "New", "opportunityId": None, "stage": None}
+
+    def leads_get(partner_id):
+        lead = {"leadId": lead_id, "status": salesforce["status"], "isConverted": bool(salesforce["opportunityId"]),
+                "opportunityId": salesforce["opportunityId"]}
+        if salesforce["stage"]:
+            lead["opportunityStage"] = salesforce["stage"]  # as the live gateway fills it from the opportunities GET
+        return [lead]
+
+    monkeypatch.setattr(sf, "broker_lead_statuses", leads_get, raising=False)
+
+    def look():
+        monkeypatch.setattr(broker_router, "_lead_refreshed", {})  # as after the 15 s refresh window
+        [lead] = [e for e in client.get("/enquiries", headers=broker).json()["records"] if e["Id"] == lead_id]
+        summary = client.get("/dashboard/summary", headers=broker).json()
+        pipe = {p["status"]: p["count"] for p in summary["pipeline"]}
+        opp = {p["stage"]: p["count"] for p in summary["opportunityPipeline"]}
+        return lead, pipe, opp
+
+    # 1. The Salesforce user moves the lead along.
+    salesforce["status"] = "Visit confirmed"
+    lead, pipe, opp = look()
+    assert lead["Visible_Status"] == "Visit confirmed" and pipe["Visit confirmed"] == 1 and opp == {}
+
+    # 2. Converted after the site visit.
+    salesforce.update(status="Qualified", opportunityId="006C100000KIX5FIAX", stage="Site Visit")
+    lead, pipe, opp = look()
+    assert lead["Opportunity_Id"] == "006C100000KIX5FIAX" and lead["Visible_Stage"] == "Site Visit"
+    assert pipe["Visit confirmed"] == 0 and pipe["Qualified"] == 0 and opp == {"Site Visit": 1}
+
+    # 3. The Opportunity's stage moves on.
+    salesforce["stage"] = "Visit Done"
+    lead, pipe, opp = look()
+    assert lead["Visible_Stage"] == "Visit Done" and opp == {"Visit Done": 1}
+    detail = client.get(f"/enquiries/{lead_id}", headers=broker).json()
+    assert detail["Opportunity_Stage"] == "Visit Done"
+    steps = client.get(f"/enquiries/{lead_id}/status-history", headers=broker).json()["records"]
+    assert [s.get("OpportunityStage") or s["NewValue"] for s in steps] == ["New", "Visit confirmed", "Site Visit", "Visit Done"]

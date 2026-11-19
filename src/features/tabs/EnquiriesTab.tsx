@@ -11,6 +11,7 @@ import { colors, radius, spacing, TAB_BAR_HEIGHT } from '@/theme';
 import { isConverted } from '@/types/models';
 import { AWAITING_APPROVAL, inOrder, LEAD_STATUS_ORDER, NOT_APPROVED, OPPORTUNITY_STAGES, shownStatus } from '@/utils/brokerStage';
 import { formatDate } from '@/utils/format';
+import { useLeadsLink } from './LeadsLink';
 
 type View_ = 'leads' | 'opportunities';
 type Filter = string; // 'All', or a status the broker sees
@@ -22,6 +23,15 @@ export function EnquiriesTab() {
   const [view, setView] = useState<View_>('leads');
   const [filter, setFilter] = useState<Filter>('All');
   const q = useDebounced(search);
+  // A dashboard pipeline row was tapped: show that view and status.
+  const { request } = useLeadsLink();
+  const [applied, setApplied] = useState<number>();
+  if (request && request.nonce !== applied) {
+    setApplied(request.nonce);
+    setView(request.view);
+    setFilter(request.filter);
+    setSearch('');
+  }
   const enquiries = useAsync(() => enquiryApi.list(q), [q]);
 
   useRefreshOnFocus(enquiries.silentReload);

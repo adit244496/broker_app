@@ -112,10 +112,29 @@ def visible_history(history: list[Record], v: Visibility) -> list[Record]:
     return shown
 
 
+def is_converted(e: Record) -> bool:
+    """Salesforce has made the lead an Opportunity (as the app's isConverted)."""
+    return bool(e.get("Opportunity_Id") or e.get("Opportunity_Stage"))
+
+
 def pipeline(leads: list[Record], v: Visibility) -> list[dict]:
-    """Leads by the status the broker sees, for the visible statuses only (annotate() first)."""
+    """Leads not converted yet, by the status the broker sees, for every visible status (annotate() first)."""
     counts: dict[str, int] = {}
     for e in leads:
-        if e.get(VISIBLE_STATUS):
+        if e.get(VISIBLE_STATUS) and not is_converted(e):
             counts[e[VISIBLE_STATUS]] = counts.get(e[VISIBLE_STATUS], 0) + 1
     return [{"status": s, "count": counts.get(s, 0)} for s in LEAD_STATUSES if v.status_shown(s)]
+
+
+def opportunity_pipeline(leads: list[Record], v: Visibility) -> list[dict]:
+    """Converted leads by the Opportunity stage the broker sees, in Salesforce's order, only stages something is in
+    (15 stages would mostly be empty). Stages Salesforce adds later go last. Converted leads whose stage isn't known
+    yet aren't counted. annotate() first."""
+    counts: dict[str, int] = {}
+    for e in leads:
+        stage = e.get(VISIBLE_STAGE)
+        if stage and is_converted(e):
+            counts[stage] = counts.get(stage, 0) + 1
+    order = {s: i for i, s in enumerate(OPPORTUNITY_STAGES)}
+    ranked = sorted(counts, key=lambda s: (order.get(s, len(order)), s))
+    return [{"stage": s, "count": counts[s]} for s in ranked]

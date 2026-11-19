@@ -19,7 +19,7 @@ import type {
   RegistrationResult,
   Session,
 } from '@/types/models';
-import { ENQUIRY_STATUSES } from '@/types/models';
+import { ENQUIRY_STATUSES, isConverted } from '@/types/models';
 import { visitStage } from '@/utils/visits';
 import { isMobileId, normalizeMobile, type LoginId } from '@/auth/loginId';
 import { ApiError } from '../client';
@@ -399,7 +399,11 @@ export const mock = {
       visitsDone: mine.filter((e) => visitStage(e) === 'done').length,
       bookings: count('Qualified'),
       booked: mine.filter((e) => e.opportunityStage === 'Booked' || e.opportunityStage === 'Closed Won').length,
-      pipeline: ENQUIRY_STATUSES.map((status) => ({ status, count: count(status) })),
+      pipeline: ENQUIRY_STATUSES.map((status) => ({ status, count: mine.filter((e) => e.status === status && !isConverted(e)).length })),
+      opportunityPipeline: [...new Set(mine.filter(isConverted).map((e) => e.opportunityStage).filter((s): s is string => !!s))].map(
+        (stage) => ({ stage, count: mine.filter((e) => isConverted(e) && e.opportunityStage === stage).length }),
+      ),
+      opportunities: mine.filter(isConverted).length,
       recentEnquiries: [...mine].sort((a, b) => b.createdDate.localeCompare(a.createdDate)).slice(0, 4),
     };
   },

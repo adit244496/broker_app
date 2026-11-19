@@ -168,6 +168,8 @@ export const dashboardFromSf = (r: SfRecord): DashboardSummary => ({
   bookings: r.bookings ?? 0,
   booked: r.booked ?? 0,
   pipeline: r.pipeline ?? [],
+  opportunityPipeline: r.opportunityPipeline ?? [],
+  opportunities: r.opportunities ?? 0,
   recentEnquiries: (r.recentEnquiries ?? []).map(enquiryFromSf),
 });
 
