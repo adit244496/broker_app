@@ -252,3 +252,65 @@ class LeadStatusEvent(Base):
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # Salesforce's time, else when we heard
     changed_by: Mapped[str | None] = mapped_column(String(255))
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ProjectSalesManager(Base):
+    """
+    A sales manager an admin set for a project. Once a project has any, a lead brokers submit for it waits for one
+    of them to approve it (emailed Approve/Reject links) before it goes to Salesforce, and they are emailed when a
+    broker tries to submit a customer who is already registered. Not a portal login.
+    """
+
+    __tablename__ = "project_sales_managers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sf_project_id: Mapped[str] = mapped_column(String(18), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    email: Mapped[str] = mapped_column(String(254))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class LeadRequest(Base):
+    """
+    A lead a broker submitted for a project with sales managers, held here until a sales manager (or an admin)
+    decides. Approving creates it in Salesforce (then it's a LeadRecord like any other); a rejected one never
+    reaches Salesforce, and the broker sees the reason.
+    """
+
+    __tablename__ = "lead_requests"
+
+    id: Mapped[str] = mapped_column(String(18), primary_key=True)  # "LRQ" + 15 hex
+    partner_id: Mapped[str] = mapped_column(String(18), index=True)
+    partner_name: Mapped[str | None] = mapped_column(String(255))
+    project_id: Mapped[str] = mapped_column(String(18), index=True)
+    project_name: Mapped[str | None] = mapped_column(String(255))
+    first_name: Mapped[str | None] = mapped_column(String(80))
+    last_name: Mapped[str] = mapped_column(String(80))
+    mobile: Mapped[str] = mapped_column(String(10), index=True)
+    email: Mapped[str | None] = mapped_column(String(254))
+    fields: Mapped[str] = mapped_column(Text)  # JSON, lead form values by Salesforce field name
+    endpoint_keys: Mapped[str] = mapped_column(Text, default="{}")  # JSON, the lead form's keys when submitted
+    # "Pending" | "Approved" | "Rejected"
+    status: Mapped[str] = mapped_column(String(20), default="Pending", index=True)
+    decided_by: Mapped[str | None] = mapped_column(String(255))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rejection_reason: Mapped[str | None] = mapped_column(Text)
+    lead_id: Mapped[str | None] = mapped_column(String(18))  # the Salesforce Lead, once approved
+    # Why Salesforce didn't take an approved lead yet (it stays pending, to try again).
+    sync_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class LeadReviewLink(Base):
+    """An Approve/Reject link emailed to one sales manager for one lead request. Hash only; works once, expires."""
+
+    __tablename__ = "lead_review_links"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    request_id: Mapped[str] = mapped_column(String(18), ForeignKey("lead_requests.id"), index=True)
+    manager_name: Mapped[str] = mapped_column(String(200))
+    manager_email: Mapped[str] = mapped_column(String(254))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

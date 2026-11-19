@@ -65,9 +65,11 @@ export default function CreateLeadScreen() {
     setSubmitting(true);
     try {
       const lead = await enquiryApi.create(payload);
-      Alert.alert('Lead created', `${lead.enquiryNumber ?? 'Your lead'} has been submitted to Salesforce.`, [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      const [title, message] =
+        lead.approvalStatus === 'Pending'
+          ? ['Lead submitted', `${lead.projectName ?? 'This project'}'s sales manager will review it. It goes to Ambuja Neotia once approved; you can follow it under Leads.`]
+          : ['Lead created', `${lead.enquiryNumber ?? 'Your lead'} has been submitted to Ambuja Neotia.`];
+      Alert.alert(title, message, [{ text: 'OK', onPress: () => router.back() }]);
     } catch (e) {
       // 409: Salesforce already has a lead for this customer and project.
       const title = e instanceof ApiError && e.status === 409 ? 'Lead already exists' : 'Could not create lead';

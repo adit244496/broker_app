@@ -1,7 +1,7 @@
 // Translation between Salesforce payloads and portal models.
 // Field API names match the mobile app's src/api/salesforce/mappers.ts — keep the two in sync.
 
-import type { Broker, BrokerStats, BrokerWithStats, Enquiry, Overview, ProjectMedia, ProjectWithAccess } from '@/types';
+import type { Broker, BrokerStats, BrokerWithStats, Enquiry, LeadRequest, Overview, ProjectMedia, ProjectWithAccess } from '@/types';
 import { mediaUrl } from './client';
 
 type SfRecord = Record<string, any>;
@@ -25,6 +25,7 @@ export const projectWithAccessFromApi = (r: SfRecord): ProjectWithAccess => ({
   projectType: r.Project_Type__c ?? undefined,
   access: { restricted: r.access?.restricted === true, brokerIds: r.access?.brokerIds ?? [] },
   media: projectMediaFromApi(r.media),
+  salesManagers: (r.salesManagers ?? []).map((m: SfRecord) => ({ id: m.id, name: m.name, email: m.email })),
 });
 
 export const brokerFromSf = (r: SfRecord): Broker => ({
@@ -102,4 +103,14 @@ export const overviewFromSf = (r: SfRecord): Overview => ({
   monthly: r.monthly ?? [],
   topBrokers: (r.topBrokers ?? []).map(brokerWithStatsFromSf),
   byProject: r.byProject ?? [],
+});
+
+export const leadRequestFromApi = (r: SfRecord): LeadRequest => ({
+  ...enquiryFromSf(r),
+  enquiryNumber: undefined,
+  approvalStatus: r.Approval_Status ?? 'Pending',
+  rejectionReason: r.Rejection_Reason ?? undefined,
+  decidedBy: r.Approval_Decided_By ?? undefined,
+  leadId: r.Lead_Id ?? undefined,
+  syncError: r.Sync_Error ?? undefined,
 });

@@ -46,6 +46,12 @@ const STAGE_COLORS: Record<string, { fg: string; bg: string }> = {
   'Closed Won': { fg: '#15803D', bg: '#DCFCE7' },
 };
 
+// What the server shows while a sales manager hasn't approved a lead yet, or rejected it.
+export const AWAITING_APPROVAL = 'Awaiting approval';
+export const NOT_APPROVED = 'Not approved';
+STAGE_COLORS[AWAITING_APPROVAL] = { fg: '#A35500', bg: '#FEF0DD' };
+STAGE_COLORS[NOT_APPROVED] = { fg: '#B91C1C', bg: '#FEE2E2' };
+
 const DEFAULT_COLOR = { fg: '#5B6B7C', bg: '#EEF2F6' };
 
 export function statusColor(value: string): { fg: string; bg: string } {

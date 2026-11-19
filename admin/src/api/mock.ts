@@ -29,6 +29,9 @@ import type {
   ProjectVideo,
   ProjectRef,
   ProjectWithAccess,
+  LeadRequest,
+  LeadRequestStatus,
+  SalesManager,
 } from '@/types';
 import { ENQUIRY_STATUSES } from '@/types';
 import { countsAsSiteVisit, isOpen } from '@/utils/metrics';
@@ -661,6 +664,7 @@ export const mock = {
         projectType: 'Residential',
         access: a ? { restricted: a.restricted, brokerIds: [...a.brokerIds] } : { restricted: false, brokerIds: [] },
         media: mediaFor(p.id),
+        salesManagers: (salesManagers.get(p.id) ?? []).map((m) => ({ ...m })),
       };
     });
   },
@@ -711,4 +715,71 @@ export const mock = {
     projectAccess.set(id, saved);
     return { ...saved, brokerIds: [...saved.brokerIds] };
   },
+
+  async setSalesManagers(id: string, managers: SalesManager[]): Promise<SalesManager[]> {
+    await delay(400);
+    requireAdmin();
+    if (!projects.some((p) => p.id === id)) throw new Error('Project not found');
+    const seen = new Set<string>();
+    const saved = managers
+      .map((m) => ({ name: m.name.trim(), email: m.email.trim().toLowerCase() }))
+      .filter((m) => !seen.has(m.email) && seen.add(m.email))
+      .map((m, i) => ({ ...m, id: Date.now() + i }));
+    salesManagers.set(id, saved);
+    return saved.map((m) => ({ ...m }));
+  },
+
+  async listLeadRequests(status: LeadRequestStatus | ''): Promise<LeadRequest[]> {
+    await delay();
+    requireAdmin();
+    return leadRequests.filter((r) => !status || r.approvalStatus === status).map((r) => ({ ...r }));
+  },
+
+  async approveLeadRequest(id: string): Promise<{ request: LeadRequest; duplicate: boolean }> {
+    await delay(500);
+    requireAdmin();
+    const r = pendingRequest(id);
+    r.approvalStatus = 'Approved';
+    r.decidedBy = 'Portal Admin';
+    r.leadId = `00Q${Date.now()}`;
+    enquiries.unshift({ ...r, id: r.leadId, enquiryNumber: r.leadId });
+    return { request: { ...r }, duplicate: false };
+  },
+
+  async rejectLeadRequest(id: string, reason: string): Promise<LeadRequest> {
+    await delay(500);
+    requireAdmin();
+    const r = pendingRequest(id);
+    r.approvalStatus = 'Rejected';
+    r.decidedBy = 'Portal Admin';
+    r.rejectionReason = reason;
+    return { ...r };
+  },
 };
+
+const salesManagers = new Map<string, SalesManager[]>();
+
+// One lead waiting for approval, so the Leads page shows what it looks like.
+const leadRequests: LeadRequest[] = [
+  {
+    id: 'LRQ0DEMO0000001',
+    firstName: 'Ishita',
+    lastName: 'Bose',
+    mobile: '9874400112',
+    email: 'ishita.bose@example.com',
+    projectId: projects[0]!.id,
+    projectName: projects[0]!.name,
+    brokerId: brokers[0]!.id,
+    brokerName: brokers[0]!.accountName,
+    status: 'New',
+    createdDate: daysAgo(0.2),
+    approvalStatus: 'Pending',
+  },
+];
+
+function pendingRequest(id: string): LeadRequest {
+  const r = leadRequests.find((x) => x.id === id);
+  if (!r) throw new Error('Lead request not found');
+  if (r.approvalStatus !== 'Pending') throw new Error(`This lead was already ${r.approvalStatus.toLowerCase()}.`);
+  return r;
+}

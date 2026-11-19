@@ -124,12 +124,34 @@ export interface ProjectMedia {
 
 export type MediaKind = 'icon' | 'cover';
 
+/** Approves brokers' leads for a project (emailed links) and hears of duplicate submissions. Not a portal login. */
+export interface SalesManager {
+  id?: number;
+  name: string;
+  email: string;
+}
+
 /** A project Salesforce makes available to the app, with the admin's visibility setting and media. */
 export interface ProjectWithAccess extends ProjectRef {
   location?: string;
   projectType?: string;
   access: ProjectAccess;
   media: ProjectMedia;
+  /** Empty: leads go straight to Salesforce. Otherwise one of them approves each lead first. */
+  salesManagers: SalesManager[];
+}
+
+export type LeadRequestStatus = 'Pending' | 'Approved' | 'Rejected';
+
+/** A broker's lead waiting for a sales manager's approval (not in Salesforce yet), or decided. */
+export interface LeadRequest extends Enquiry {
+  approvalStatus: LeadRequestStatus;
+  rejectionReason?: string;
+  decidedBy?: string;
+  /** The Salesforce lead, once approved. */
+  leadId?: string;
+  /** Why Salesforce didn't take it when it was approved (it stays pending). */
+  syncError?: string;
 }
 
 export interface Overview {

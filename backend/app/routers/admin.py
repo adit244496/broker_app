@@ -4,7 +4,7 @@ from datetime import timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select, update
 
 from app.config import get_settings
@@ -18,7 +18,7 @@ from app.notify import PushSender, get_push
 from app.project_access import Access, access_by_project, set_access
 from app.project_media import MediaError, as_json as media_json, media_by_project, remove_image, save_image, set_videos
 from app.ratelimit import admin_login_limit
-from app import account_form, registrations
+from app import account_form, lead_approvals, registrations
 from app.reviews import NotPending, WrongStage, decide, get_record, send_review_emails
 from app.salesforce.base import ACTIVE, APPROVED, PENDING, Record, SalesforceNotConnected
 from app.security import hash_password, new_token, verify_password
@@ -328,6 +328,7 @@ def list_projects(ctx: Admin, db: Db, sf: Salesforce):
     """Projects Salesforce makes available to the app, with who can see each one and the admin's media."""
     access = access_by_project(db)
     media = media_by_project(db)
+    managers = lead_approvals.managers_by_project(db)
     return {
         "records": [
             {
@@ -337,6 +338,8 @@ def list_projects(ctx: Admin, db: Db, sf: Salesforce):
                 "Project_Type__c": p.get("Project_Type__c"),
                 "access": access.get(p["Id"], Access()).as_json(),
                 "media": {**media_json(media.get(p["Id"])), "salesforceImageUrl": p.get("Cover_Image_URL__c")},
+                # Empty = leads go straight to Salesforce; otherwise one of them approves each lead first.
+                "salesManagers": [lead_approvals.manager_json(m) for m in managers.get(p["Id"], [])],
             }
             for p in sf.list_projects()
         ]
@@ -421,3 +424,60 @@ def update_project_access(project_id: str, body: ProjectAccessIn, ctx: Admin, db
     access = set_access(db, project, body.restricted, wanted, ctx.admin)
     db.commit()
     return {"Id": project["Id"], "access": access.as_json()}
+
+
+class SalesManagerIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    email: EmailStr
+
+
+class SalesManagersIn(BaseModel):
+    managers: list[SalesManagerIn] = Field(default_factory=list, max_length=lead_approvals.MAX_MANAGERS)
+
+
+@router.put("/projects/{project_id}/sales-managers")
+def update_sales_managers(project_id: str, body: SalesManagersIn, ctx: Admin, db: Db, sf: Salesforce):
+    """Replaces the project's sales managers. With any, brokers' leads for it wait for one of them to approve;
+    none = leads go straight to Salesforce. Leads already waiting keep the links already emailed."""
+    project = _project_or_404(sf, project_id)
+    rows = lead_approvals.set_managers(db, project, [(m.name, str(m.email)) for m in body.managers], ctx.admin)
+    db.commit()
+    return {"Id": project["Id"], "salesManagers": [lead_approvals.manager_json(m) for m in rows]}
+
+
+@router.get("/lead-requests")
+def list_lead_requests(ctx: Admin, db: Db, status: Annotated[str, Query(pattern="^(Pending|Approved|Rejected)?$")] = "Pending"):
+    """Leads waiting for (or decided by) a sales manager. `status` empty = all."""
+    return {"records": [lead_approvals.as_enquiry(r) for r in lead_approvals.list_requests(db, status or None)]}
+
+
+def _request_or_404(db: Db, request_id: str):
+    req = lead_approvals.get(db, request_id)
+    if not req:
+        raise HTTPException(404, "Lead request not found")
+    return req
+
+
+@router.post("/lead-requests/{request_id}/approve")
+def approve_lead_request(request_id: str, ctx: Admin, db: Db, sf: Salesforce, push: Annotated[PushSender, Depends(get_push)]):
+    req = _request_or_404(db, request_id)
+    try:
+        result = lead_approvals.decide(db, sf, push, req, True, by=ctx.admin.name, admin_id=ctx.admin.id, reason=None, via="admin portal")
+    except lead_approvals.NotPending:
+        raise HTTPException(409, f"This lead was already {req.status.lower()}.") from None
+    except lead_approvals.NotSynced as e:
+        db.commit()
+        raise HTTPException(502, f"Salesforce didn't accept the lead: {e}") from None
+    db.commit()
+    return {"record": lead_approvals.as_enquiry(req), "duplicate": result.duplicate}
+
+
+@router.post("/lead-requests/{request_id}/reject")
+def reject_lead_request(request_id: str, body: RejectIn, ctx: Admin, db: Db, sf: Salesforce, push: Annotated[PushSender, Depends(get_push)]):
+    req = _request_or_404(db, request_id)
+    try:
+        lead_approvals.decide(db, sf, push, req, False, by=ctx.admin.name, admin_id=ctx.admin.id, reason=body.reason.strip(), via="admin portal")
+    except lead_approvals.NotPending:
+        raise HTTPException(409, f"This lead was already {req.status.lower()}.") from None
+    db.commit()
+    return {"record": lead_approvals.as_enquiry(req), "duplicate": False}

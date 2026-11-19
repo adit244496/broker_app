@@ -106,6 +106,8 @@ export const enquiryFromSf = (r: SfRecord): Enquiry => ({
   visibleStage: (r.Visible_Stage === undefined ? r.Opportunity_Stage : r.Visible_Stage) ?? undefined,
   opportunityStage: r.Opportunity_Stage ?? undefined,
   remarks: r.Remarks__c,
+  approvalStatus: r.Approval_Status === 'Pending' || r.Approval_Status === 'Rejected' ? r.Approval_Status : undefined,
+  rejectionReason: r.Rejection_Reason ?? undefined,
   brokerId: r.Channel_Partner__c,
   brokerName: r.Channel_Partner__r?.Name,
   status: r.Status ?? r.Status__c ?? 'New',

@@ -26,6 +26,9 @@ import type {
   ProjectRef,
   ProjectVideo,
   ProjectWithAccess,
+  LeadRequest,
+  LeadRequestStatus,
+  SalesManager,
 } from '@/types';
 import { env, request } from './client';
 import { endpoints } from './endpoints';
@@ -226,9 +229,38 @@ export const projectApi = {
     const res = await request<{ media: Record<string, any> }>(endpoints.projectVideos(id), { method: 'PUT', body: { videos } });
     return map.projectMediaFromApi(res.media);
   },
+  /** Replaces the project's sales managers (none = leads go straight to Salesforce). */
+  async setSalesManagers(id: string, managers: SalesManager[]): Promise<SalesManager[]> {
+    if (env.useMock) return mock.setSalesManagers(id, managers);
+    const res = await request<{ salesManagers: SalesManager[] }>(endpoints.projectSalesManagers(id), {
+      method: 'PUT',
+      body: { managers: managers.map(({ name, email }) => ({ name: name.trim(), email: email.trim() })) },
+    });
+    return res.salesManagers;
+  },
   async setAccess(id: string, access: ProjectAccess): Promise<ProjectAccess> {
     if (env.useMock) return mock.setProjectAccess(id, access);
     const res = await request<{ access: ProjectAccess }>(endpoints.projectAccess(id), { method: 'PUT', body: access });
     return res.access;
+  },
+};
+
+/** Leads waiting for a sales manager's approval. Approving creates the lead in Salesforce. */
+export const leadRequestApi = {
+  async list(status: LeadRequestStatus | '' = 'Pending'): Promise<LeadRequest[]> {
+    if (env.useMock) return mock.listLeadRequests(status);
+    const res = await request<ListResponse>(endpoints.leadRequests(), { query: { status } });
+    return res.records.map(map.leadRequestFromApi);
+  },
+  /** `duplicate`: the customer turned out to be registered already, so the lead was rejected instead. */
+  async approve(id: string): Promise<{ request: LeadRequest; duplicate: boolean }> {
+    if (env.useMock) return mock.approveLeadRequest(id);
+    const res = await request<{ record: Record<string, any>; duplicate: boolean }>(endpoints.approveLeadRequest(id), { method: 'POST' });
+    return { request: map.leadRequestFromApi(res.record), duplicate: res.duplicate };
+  },
+  async reject(id: string, reason: string): Promise<LeadRequest> {
+    if (env.useMock) return mock.rejectLeadRequest(id, reason);
+    const res = await request<{ record: Record<string, any> }>(endpoints.rejectLeadRequest(id), { method: 'POST', body: { reason } });
+    return map.leadRequestFromApi(res.record);
   },
 };

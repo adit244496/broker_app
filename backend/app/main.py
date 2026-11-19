@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.db import Base, add_missing_columns, engine
 from app.project_media import media_dir
-from app.routers import admin, auth, broker, dev, hod, settings as settings_router, webhooks
+from app.routers import admin, auth, broker, dev, hod, lead_review, settings as settings_router, webhooks
 from app.salesforce.base import SalesforceError, SalesforceNotConnected
 
 log = logging.getLogger("broker_app")
@@ -86,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(admin.router)
     app.include_router(settings_router.router)
     app.include_router(hod.router)
+    app.include_router(lead_review.router)
     app.include_router(webhooks.router)
     if settings.salesforce_mode == "mock" and settings.environment != "production":
         app.include_router(dev.router)

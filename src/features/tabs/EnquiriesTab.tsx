@@ -9,7 +9,7 @@ import { useDebounced } from '@/hooks/useDebounced';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { colors, radius, spacing, TAB_BAR_HEIGHT } from '@/theme';
 import { isConverted } from '@/types/models';
-import { inOrder, LEAD_STATUS_ORDER, OPPORTUNITY_STAGES, shownStatus } from '@/utils/brokerStage';
+import { AWAITING_APPROVAL, inOrder, LEAD_STATUS_ORDER, NOT_APPROVED, OPPORTUNITY_STAGES, shownStatus } from '@/utils/brokerStage';
 import { formatDate } from '@/utils/format';
 
 type View_ = 'leads' | 'opportunities';
@@ -40,7 +40,7 @@ export function EnquiriesTab() {
     const s = shownStatus(e);
     if (s) counts.set(s, (counts.get(s) ?? 0) + 1);
   }
-  const order = view === 'leads' ? LEAD_STATUS_ORDER : OPPORTUNITY_STAGES;
+  const order = view === 'leads' ? [AWAITING_APPROVAL, ...LEAD_STATUS_ORDER, NOT_APPROVED] : OPPORTUNITY_STAGES;
   const chips: Filter[] = ['All', ...inOrder([...counts.keys(), ...(filter !== 'All' ? [filter] : [])], order)];
 
   const switchTo = (v: View_) => {
@@ -131,7 +131,7 @@ export function EnquiriesTab() {
               style={view === 'opportunities' ? styles.converted : undefined}
             >
               <View style={styles.top}>
-                <Text style={styles.number}>{e.enquiryNumber}</Text>
+                <Text style={styles.number}>{e.enquiryNumber ?? 'New lead'}</Text>
                 {shownStatus(e) ? <StageBadge stage={shownStatus(e)!} /> : null}
               </View>
               <Text style={styles.name}>

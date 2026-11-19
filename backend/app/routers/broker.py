@@ -11,11 +11,13 @@ import time
 from typing import Annotated, Any
 from urllib.parse import quote, urlencode
 
-from fastapi import APIRouter, Body, HTTPException
-from fastapi.responses import HTMLResponse, Response
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
-from app import account_form, lead_form, lead_store, status_visibility
+from app import account_form, lead_approvals, lead_form, lead_store, status_visibility
 from app.deps import Broker, Db, Salesforce
+from app.email_settings import get_email
+from app.notify import EmailSender
 from app.models import BrokerCredential, PartnerRecord
 from app.metrics import broker_stats
 from app.project_access import can_see, visible_to
@@ -48,6 +50,14 @@ def _refresh_lead_statuses(db: Db, sf: Salesforce, partner_id: str) -> None:
         return
     if leads and lead_store.apply_salesforce_statuses(db, leads):
         db.commit()
+
+
+def _own_request(db: Db, ctx: Broker, enquiry_id: str):
+    """A lead still waiting for a sales manager (or rejected by one), if `enquiry_id` is one of this broker's."""
+    req = lead_approvals.get(db, enquiry_id)
+    if not req or req.partner_id != ctx.account_id:
+        raise HTTPException(404, "Enquiry not found")
+    return req
 
 
 def _own_enquiry(sf: Salesforce, ctx: Broker, enquiry_id: str) -> Record:
@@ -89,17 +99,23 @@ def dashboard(ctx: Broker, db: Db, sf: Salesforce):
 def list_enquiries(ctx: Broker, db: Db, sf: Salesforce, search: str | None = None):
     _refresh_lead_statuses(db, sf, ctx.account_id)
     records = status_visibility.annotate(db, sf.list_enquiries(partner_id=ctx.account_id, search=search))
+    # Plus the ones waiting for a sales manager's approval, or rejected (not in Salesforce).
+    records += lead_approvals.for_broker(db, ctx.account_id, search)
     return {"records": sorted(records, key=lambda e: e["CreatedDate"], reverse=True)}
 
 
 @router.get("/enquiries/{enquiry_id}")
 def get_enquiry(enquiry_id: str, ctx: Broker, db: Db, sf: Salesforce):
+    if lead_approvals.is_request_id(enquiry_id):
+        return lead_approvals.as_enquiry(_own_request(db, ctx, enquiry_id))
     _refresh_lead_statuses(db, sf, ctx.account_id)
     return status_visibility.annotate(db, [_own_enquiry(sf, ctx, enquiry_id)])[0]
 
 
 @router.get("/enquiries/{enquiry_id}/status-history")
 def status_history(enquiry_id: str, ctx: Broker, db: Db, sf: Salesforce):
+    if lead_approvals.is_request_id(enquiry_id):
+        return {"records": lead_approvals.history(_own_request(db, ctx, enquiry_id))}
     _own_enquiry(sf, ctx, enquiry_id)
     # Only the steps an admin hasn't hidden (Settings -> Statuses shown to brokers).
     return {"records": status_visibility.visible_history(sf.enquiry_status_history(enquiry_id), status_visibility.load(db))}
@@ -120,10 +136,14 @@ def create_enquiry(
     ctx: Broker,
     db: Db,
     sf: Salesforce,
+    mailer: Annotated[EmailSender, Depends(get_email)],
+    tasks: BackgroundTasks,
     body: Annotated[dict[str, Any], Body(description="Field values by form key: {\"fields\": {...}}")],
 ):
     """Creates a Salesforce Lead from the admin-defined lead form, unless a lead with this mobile number
-    already exists (in any project). The broker's Salesforce Account Id is added here, never taken from the app."""
+    already exists (in any project; the project's sales managers are then emailed). For a project with sales
+    managers the lead waits for one of them to approve it first ("pendingApproval": true). The broker's Salesforce
+    Account Id is added here, never taken from the app."""
     values = body.get("fields") if isinstance(body.get("fields"), dict) else body  # older apps send a flat object
     form = lead_form.load(db)
     # Only projects this broker can see (Salesforce's list, narrowed by the admin's per-project setting).
@@ -137,32 +157,60 @@ def create_enquiry(
     project = projects[project_id]
     mobile = sf_values[by_key["mobile"].sfField]
 
+    partner = db.get(PartnerRecord, ctx.account_id)
+    partner_name = partner.name if partner else None
+    first, last = (sf_values.get(by_key[k].sfField) or None for k in ("first_name", "last_name"))
+    name = " ".join(str(x) for x in (first, last) if x).strip()
+
+    def duplicate(existing, message: str, existing_id: str | None = None) -> JSONResponse:
+        # The project's sales managers hear of every attempt to submit an already registered customer. Returned,
+        # not raised: background tasks (the email) only run with a returned response.
+        alert = lead_approvals.duplicate_alert(db, project=project, broker=partner_name or ctx.account_id,
+                                               customer=name or "A customer", mobile=mobile, existing=existing, existing_id=existing_id)
+        if alert:
+            tasks.add_task(lead_approvals.send_duplicate_alert, mailer, alert)
+        return JSONResponse({"message": message}, status_code=409, background=tasks)
+
     existing = sf.find_duplicate_lead(mobile=mobile)
     if existing:
         if existing.get("Channel_Partner__c") == ctx.account_id:
             number = existing.get("Enquiry_Number__c") or existing["Id"]
             where = (existing.get("Project__r") or {}).get("Name")
             project_part = f" for {where}" if where else ""
-            raise HTTPException(409, f"You have already submitted this customer{project_part} (lead {number}).")
+            return duplicate(existing, f"You have already submitted this customer{project_part} (lead {number}).")
         # Don't reveal which broker, project or other source owns the customer.
-        raise HTTPException(409, LEAD_EXISTS_ANYWHERE)
+        return duplicate(existing, LEAD_EXISTS_ANYWHERE)
+    waiting = lead_approvals.pending_with_mobile(db, mobile)
+    if waiting:
+        if waiting.partner_id == ctx.account_id:
+            return duplicate(waiting, f"You have already submitted this customer for {waiting.project_name}; it's waiting for approval.")
+        return duplicate(waiting, LEAD_EXISTS_ANYWHERE)
 
-    name = " ".join(str(sf_values.get(by_key[k].sfField) or "") for k in ("first_name", "last_name")).strip()
+    if lead_approvals.managers_for(db, project_id):
+        # Held until one of the project's sales managers approves it; only then does it go to Salesforce.
+        email_field = by_key.get("email")
+        req = lead_approvals.create(db, partner_id=ctx.account_id, partner_name=partner_name, project=project, values=sf_values,
+                                    endpoint_keys=lead_form.endpoint_keys(form), customer=(first, last or ""), mobile=mobile,
+                                    email=sf_values.get(email_field.sfField) if email_field else None)
+        emails = lead_approvals.create_links(db, req)
+        rows = lead_approvals.display_rows(db, req)
+        db.commit()
+        tasks.add_task(lead_approvals.send_review_emails, mailer, name or "New lead", req.project_name, rows, emails)
+        return {"id": req.id, "success": True, "pendingApproval": True, "record": lead_approvals.as_enquiry(req)}
+
     try:
         record = sf.create_enquiry(
             {**sf_values, "Channel_Partner__c": ctx.account_id, "LeadSource": "Channel Partner App"},
             customer_name=name or None,
             endpoint_keys=lead_form.endpoint_keys(form),
         )
-    except DuplicateLead:
+    except DuplicateLead as e:
         # Salesforce checks every lead with this mobile, in any project and from any source.
-        raise HTTPException(409, LEAD_EXISTS_ANYWHERE) from None
+        return duplicate(None, LEAD_EXISTS_ANYWHERE, e.existing_id)
     # Salesforce doesn't link the lead to the broker yet, and can't list leads: our copy keeps both.
-    partner = db.get(PartnerRecord, ctx.account_id)
-    lead_store.save(db, record, partner_id=ctx.account_id, partner_name=partner.name if partner else None,
-                    project=project, values=sf_values)
+    lead_store.save(db, record, partner_id=ctx.account_id, partner_name=partner_name, project=project, values=sf_values)
     db.commit()
-    return {"id": record["Id"], "success": True, "record": record}
+    return {"id": record["Id"], "success": True, "pendingApproval": False, "record": record}
 
 
 @router.get("/projects")

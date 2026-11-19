@@ -88,6 +88,13 @@ export interface Enquiry {
   /** Once the lead is converted: the Opportunity's Stage (Visit Done, Booked, ...), a separate picklist. */
   opportunityStage?: string;
   remarks?: string;
+  /**
+   * Set while the lead waits for the project's sales manager to approve it (not in Salesforce yet), or once they
+   * rejected it. Undefined for leads in Salesforce.
+   */
+  approvalStatus?: 'Pending' | 'Rejected';
+  /** The sales manager's reason, when rejected. */
+  rejectionReason?: string;
   brokerId: string;
   brokerName?: string;
   status: EnquiryStatus;
@@ -114,6 +121,9 @@ export interface LeadField {
 
 /** Values typed into the lead form, by field key. Dates are YYYY-MM-DD. */
 export type LeadValues = Record<string, string>;
+
+/** Waiting for the sales manager, or rejected by them: not (yet) a Salesforce lead. */
+export const awaitingApproval = (e: Pick<Enquiry, 'approvalStatus'>): boolean => !!e.approvalStatus;
 
 export type NewEnquiryInput = Omit<
   Enquiry,

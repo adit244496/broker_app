@@ -6,6 +6,7 @@ import { useAsync } from '@/hooks/useAsync';
 import { useDebounced } from '@/hooks/useDebounced';
 import { ENQUIRY_STATUSES, type EnquiryFilters, type EnquiryStatus } from '@/types';
 import { downloadCsv } from '@/utils/csv';
+import { LeadRequestsCard } from './LeadRequestsCard';
 import { formatDate, toDateKey } from '@/utils/format';
 
 const PAGE_SIZE = 50;
@@ -75,6 +76,8 @@ export function EnquiriesPage() {
           </button>
         }
       />
+
+      <LeadRequestsCard onDecided={enquiries.reload} />
 
       <div className="toolbar">
         <div className="grow">

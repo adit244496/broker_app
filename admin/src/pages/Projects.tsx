@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import { brokerApi, projectApi } from '@/api/services';
 import { BrokerStatusBadge, Card, EmptyState, ErrorState, Loading, PageHeader } from '@/components/ui';
 import { useAsync } from '@/hooks/useAsync';
-import type { BrokerWithStats, ProjectAccess, ProjectMedia, ProjectWithAccess } from '@/types';
+import type { BrokerWithStats, ProjectAccess, ProjectMedia, ProjectWithAccess, SalesManager } from '@/types';
 import { ProjectMediaEditor } from './ProjectMediaEditor';
+import { managersLabel, SalesManagersEditor } from './SalesManagersEditor';
 
 /** "All brokers", "3 brokers", "Hidden from all brokers". */
 export function accessLabel(access: ProjectAccess) {
@@ -36,14 +37,21 @@ export function ProjectsPage() {
   const brokers = useAsync(() => brokerApi.list());
   const [saved, setSaved] = useState<Record<string, ProjectAccess>>({});
   const [savedMedia, setSavedMedia] = useState<Record<string, ProjectMedia>>({});
-  // "access:<id>" or "media:<id>": which editor is open, for which project.
+  const [savedManagers, setSavedManagers] = useState<Record<string, SalesManager[]>>({});
+  // "access:<id>", "media:<id>" or "managers:<id>": which editor is open, for which project.
   const [editing, setEditing] = useState<string>();
   const [notice, setNotice] = useState<{ kind: 'success' | 'error'; text: string }>();
 
-  const rows = (projects.data ?? []).map((p) => ({ ...p, access: saved[p.id] ?? p.access, media: savedMedia[p.id] ?? p.media }));
+  const rows = (projects.data ?? []).map((p) => ({
+    ...p,
+    access: saved[p.id] ?? p.access,
+    media: savedMedia[p.id] ?? p.media,
+    salesManagers: savedManagers[p.id] ?? p.salesManagers,
+  }));
   const current = rows.find((p) => editing === `access:${p.id}`);
   const mediaProject = rows.find((p) => editing === `media:${p.id}`);
-  const open = (what: 'access' | 'media', id: string) => {
+  const managersProject = rows.find((p) => editing === `managers:${p.id}`);
+  const open = (what: 'access' | 'media' | 'managers', id: string) => {
     setNotice(undefined);
     setEditing(`${what}:${id}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -53,7 +61,7 @@ export function ProjectsPage() {
     <>
       <PageHeader
         title="Projects"
-        subtitle="Choose which brokers see each project, and add a logo, cover image and videos so it looks good in the app. Projects come from Salesforce; only the ones Salesforce makes available to the app are listed."
+        subtitle="Choose which brokers see each project, who approves its leads, and add a logo, cover image and videos so it looks good in the app. Projects come from Salesforce; only the ones Salesforce makes available to the app are listed."
       />
 
       {notice ? (
@@ -73,6 +81,24 @@ export function ProjectsPage() {
             setSaved((s) => ({ ...s, [current.id]: access }));
             setEditing(undefined);
             setNotice({ kind: 'success', text: `${current.name}: now visible to ${accessLabel(access).toLowerCase()}.` });
+          }}
+        />
+      ) : null}
+
+      {managersProject ? (
+        <SalesManagersEditor
+          key={managersProject.id}
+          project={managersProject}
+          onCancel={() => setEditing(undefined)}
+          onSaved={(managers) => {
+            setSavedManagers((m) => ({ ...m, [managersProject.id]: managers }));
+            setEditing(undefined);
+            setNotice({
+              kind: 'success',
+              text: managers.length
+                ? `${managersProject.name}: new leads now wait for approval by ${managers.map((m) => m.name).join(', ')}.`
+                : `${managersProject.name}: leads now go straight to Salesforce.`,
+            });
           }}
         />
       ) : null}
@@ -99,6 +125,7 @@ export function ProjectsPage() {
                   <th>Project</th>
                   <th>Look &amp; media</th>
                   <th>Visible to</th>
+                  <th>Lead approval</th>
                   <th />
                 </tr>
               </thead>
@@ -120,6 +147,13 @@ export function ProjectsPage() {
                     <td>
                       <AccessBadge access={p.access} />
                     </td>
+                    <td>
+                      {p.salesManagers.length ? (
+                        <span title={p.salesManagers.map((m) => `${m.name} <${m.email}>`).join('\n')}>{managersLabel(p.salesManagers)}</span>
+                      ) : (
+                        <span className="muted">{managersLabel(p.salesManagers)}</span>
+                      )}
+                    </td>
                     <td className="num">
                       <div className="row-actions">
                         <button className="btn btn-secondary" disabled={editing === `media:${p.id}`} onClick={() => open('media', p.id)}>
@@ -127,6 +161,9 @@ export function ProjectsPage() {
                         </button>
                         <button className="btn btn-secondary" disabled={editing === `access:${p.id}`} onClick={() => open('access', p.id)}>
                           Visibility
+                        </button>
+                        <button className="btn btn-secondary" disabled={editing === `managers:${p.id}`} onClick={() => open('managers', p.id)}>
+                          Sales managers
                         </button>
                       </div>
                     </td>

@@ -5,7 +5,7 @@ import { enquiryApi } from '@/api/services';
 import { Card, ErrorState, InfoRow, Loading, SectionTitle, StageBadge } from '@/components/ui';
 import { useAsync } from '@/hooks/useAsync';
 import { colors, spacing } from '@/theme';
-import { CLOSED_STATUSES, isConverted, type EnquiryStatus } from '@/types/models';
+import { awaitingApproval, CLOSED_STATUSES, isConverted, type EnquiryStatus } from '@/types/models';
 import { historySteps, shownStatus, statusColor } from '@/utils/brokerStage';
 import { formatDate } from '@/utils/format';
 import { visitStage } from '@/utils/visits';
@@ -40,6 +40,8 @@ export default function EnquiryDetailScreen() {
       ? 3
       : (STAGE_OF[e.status] ?? 0);
   const closed = !converted && CLOSED_STATUSES.includes(e.status);
+  // Not in Salesforce yet (waiting for the sales manager) or rejected: no progress to track.
+  const approval = awaitingApproval(e) ? e.approvalStatus : undefined;
   // Only the steps an admin hasn't hidden from brokers (the server filters them).
   const steps = historySteps(history);
   const stage = shownStatus(e);
@@ -60,7 +62,7 @@ export default function EnquiryDetailScreen() {
         </View>
         <Text style={styles.sub}>Last updated {formatDate(e.lastModifiedDate ?? e.createdDate, true)}</Text>
 
-        {closed ? (
+        {approval ? null : closed ? (
           <View style={styles.lost}>
             <Ionicons name="close-circle" size={18} color={colors.textMuted} />
             <Text style={{ color: colors.textMuted, fontWeight: '600' }}>This lead was closed.</Text>
@@ -81,6 +83,26 @@ export default function EnquiryDetailScreen() {
           </View>
         )}
       </Card>
+
+      {approval === 'Pending' ? (
+        <View style={[styles.oppBanner, { backgroundColor: colors.accentSoft }]}>
+          <Ionicons name="hourglass-outline" size={22} color={colors.accentText} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.oppTitle, { color: colors.accentText }]}>Waiting for approval</Text>
+            <Text style={[styles.oppText, { color: colors.accentText }]}>
+              {"The project's sales manager reviews new leads. It goes to Ambuja Neotia once approved."}
+            </Text>
+          </View>
+        </View>
+      ) : approval === 'Rejected' ? (
+        <View style={[styles.oppBanner, { backgroundColor: '#FEE2E2' }]}>
+          <Ionicons name="close-circle" size={22} color={colors.danger} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.oppTitle, { color: colors.danger }]}>Not approved</Text>
+            <Text style={[styles.oppText, { color: colors.text }]}>{e.rejectionReason ?? 'The sales manager did not approve this lead.'}</Text>
+          </View>
+        </View>
+      ) : null}
 
       {converted ? (
         <View style={styles.oppBanner}>
